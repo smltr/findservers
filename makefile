@@ -25,3 +25,7 @@ clean: down
 # Deploy to fly.io
 deploy:
 	fly deploy
+
+# view logs from deployment
+logs:
+	flyctl logs --app findservers
