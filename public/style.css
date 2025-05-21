@@ -1,0 +1,422 @@
+:root {
+    --steam-green: #4c5844;
+    --steam-dark: #383838;
+    --steam-light: #676767;
+    --steam-yellow: #e6c300;
+    --steam-header: #4d4d4d;
+    --steam-yellow-faded: #c6b13c;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    font-family: Tahoma, Arial, sans-serif;
+    font-size: 16px;
+    background: #2d2d2d;
+    margin: 0;
+    padding: 0;
+    height: 100vh;
+    overflow: hidden;
+    color: #dadada;
+}
+
+.title-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--steam-dark);
+    padding: 8px;
+    font-size: 13px;
+    flex-shrink: 0; /* Prevent shrinking */
+}
+
+.title-bar a {
+    color: var(--steam-yellow);
+    text-decoration: none;
+}
+
+.title-bar .beta-tag {
+    color: var(--steam-yellow);
+    margin-left: 8px;
+    font-style: italic;
+}
+
+.title-bar a:hover {
+    text-decoration: underline;
+}
+
+.server-browser {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    max-width: none;
+    margin: 0;
+    background: var(--steam-dark);
+    overflow: hidden; /* Change from overflow-x: hidden to just overflow: hidden */
+}
+
+.server-list {
+    overflow-y: auto;
+    min-height: 0; /* Important for grid container */
+}
+
+.close-btn {
+    background: #ac3939;
+    border: 1px solid #000;
+    color: white;
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+}
+
+.tabs {
+    display: flex;
+    background: var(--steam-header);
+    flex-shrink: 0; /* Prevent shrinking */
+}
+
+.tabs button {
+    background: none;
+    border: none;
+    color: #dadada;
+    padding: 8px 16px;
+    cursor: pointer;
+}
+
+.tabs button.active {
+    background: var(--steam-dark);
+    color: var(--steam-yellow);
+}
+
+.server-list {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    position: relative;
+    overflow-x: hidden;
+}
+
+.server-headers,
+.server-row {
+    display: grid;
+    grid-template-columns:
+        30px 30px 65px minmax(350px, 1fr) 65px minmax(80px, 100px)
+        minmax(120px, 170px) minmax(100px, 500px);
+}
+
+.server-row .cell-region {
+    text-align: center;
+}
+
+.server-headers {
+    background: var(--steam-header);
+    color: white;
+    font-size: 13px;
+    cursor: pointer;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    flex-shrink: 0; /* Prevent shrinking */
+}
+
+.server-rows {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+.server-headers > div {
+    padding: 8px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.server-row {
+    min-width: 0; /* Add this to help prevent overflow */
+    font-size: 13px;
+    cursor: pointer;
+    /* contain: content;
+    will-change: transform; */
+}
+
+.server-row:hover {
+    background: var(--steam-green);
+    color: white;
+}
+
+.server-row > div {
+    padding: 6px 8px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.server-row.selected {
+    background: var(--steam-yellow-faded);
+    color: black;
+}
+
+.cell-name {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px; /* Adds some space between name and IP */
+}
+
+.cell-name .server-name {
+    flex: 1;
+    min-width: 0; /* Allows text truncation */
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.cell-name .server-ip {
+    display: none;
+    opacity: 0.5;
+    flex-shrink: 0; /* Prevents IP from shrinking */
+}
+
+.server-row:hover .cell-name .server-ip {
+    display: block;
+}
+
+.filter-menu {
+    background: var(--steam-dark);
+    border-top: 1px solid #000;
+    border-bottom: 1px solid #000;
+    padding: 15px;
+}
+
+.filter-menu-row {
+    display: flex;
+    margin-bottom: 15px;
+    gap: 20px;
+}
+
+.filter-menu-row:last-child {
+    margin-bottom: 0;
+}
+
+.filter-section {
+    flex: 1;
+}
+
+.filter-section input[type="text"],
+.filter-section select {
+    width: 100%;
+    margin-top: 5px;
+    background: var(--steam-header);
+    color: white;
+    border: 1px solid #000;
+    padding: 4px;
+}
+
+.filter-checkboxes {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.bottom-controls {
+    flex-shrink: 0;
+    background: var(--steam-header);
+    border-top: 1px solid #000;
+    padding: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.filters {
+    display: flex;
+    gap: 10px;
+}
+
+.filter-input input {
+    background: var(--steam-dark);
+    border: 1px solid #000;
+    color: white;
+    padding: 4px 8px;
+    width: 200px;
+    font-size: 13px;
+}
+
+.filter-input input:focus {
+    outline: 1px solid var(--steam-yellow);
+}
+
+.actions {
+    display: flex;
+    gap: 10px;
+}
+
+button {
+    background: var(--steam-green);
+    border: 1px solid #000;
+    color: white;
+    padding: 4px 8px;
+    cursor: pointer;
+}
+
+button:hover {
+    background: #5a6952;
+}
+
+button.active {
+    background: var(--steam-dark);
+    color: var(--steam-yellow);
+}
+
+.connect-btn {
+    background: #4c7844;
+}
+
+.connect-btn:hover {
+    background: #5a8952;
+}
+.refresh-btn {
+    background: #486078;
+}
+
+.refresh-btn:hover {
+    background: #5a7289;
+}
+
+.status-refreshing {
+    padding: 4px 8px;
+    color: var(--steam-yellow);
+    font-size: 13px;
+}
+
+input[type="checkbox"] {
+    accent-color: var(--steam-green);
+}
+
+label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+}
+
+.server-row .cell-pw,
+.server-row .cell-bot,
+.server-row .cell-vac,
+.server-row .cell-ip {
+    opacity: 0.3;
+}
+
+.cell-players .max-players,
+.cell-players .zero-players,
+.server-row .cell-region,
+.server-row .cell-tags {
+    opacity: 0.5;
+}
+
+.server-row .cell-bot,
+.server-headers .header-bot {
+    text-align: right;
+    padding-right: 15px;
+}
+
+.report-section {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+    padding: 1rem;
+}
+
+.report-info {
+    max-width: 600px;
+    margin: 0 auto;
+    border-radius: 8px;
+}
+
+.report-info h2 {
+    margin-bottom: 1rem;
+    color: #fff;
+}
+
+.report-info p {
+    margin-bottom: 2rem;
+    line-height: 1.6;
+}
+
+.info-link {
+    color: #4a9eff;
+    text-decoration: underline;
+}
+
+.info-link:hover {
+    color: #7ab8ff;
+}
+
+.changelog {
+    margin-top: 1rem;
+    border-left: 2px solid var(--steam-green);
+    padding-left: 1rem;
+}
+
+.changelog-entry {
+    margin-bottom: 1.5rem;
+}
+
+.changelog-date {
+    color: var(--steam-yellow);
+    font-weight: bold;
+    margin-bottom: 0.5rem;
+}
+
+.changelog ul {
+    margin: 0;
+    padding-left: 1.2rem;
+}
+
+.changelog li {
+    margin: 0.3rem 0;
+    color: #dadada;
+}
+
+.internet-tab {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0; /* Important for nested flexbox scrolling */
+    overflow: hidden; /* Contain scrolling */
+}
+
+.server-list {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0; /* Important for nested flexbox scrolling */
+    overflow: hidden; /* Contain overflow */
+}
+
+.bottom-controls {
+    flex-shrink: 0; /* Prevents shrinking */
+    position: sticky;
+    bottom: 0;
+    background: var(--steam-header);
+    border-top: 1px solid #000;
+}
+
+.filter-checkbox {
+    display: flex;
+    align-items: center;
+    margin-left: 10px;
+}
+
+.filter-checkbox label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+}
+
+.filter-checkbox input[type="checkbox"] {
+    cursor: pointer;
+}
