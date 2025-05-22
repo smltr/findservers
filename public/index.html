@@ -11,16 +11,15 @@
             name="description"
             content="Browse Counter-Strike 2 community servers"
         />
-        <!-- <link rel="manifest" href="/static/manifest.json" />
-        <link rel="apple-touch-icon" href="/static/icon-192.png" /> -->
 
-        <!-- Preload key assets -->
-        <!-- <link rel="preload" href="/static/vendor/htmx.min.js" as="script" /> -->
-        <!-- <link rel="preload" href="/static/vendor/alpine.min.js" as="script" /> -->
-        <!-- External CDN scripts instead of local static files -->
         <link
             rel="preload"
             href="https://unpkg.com/htmx.org@1.9.9"
+            as="script"
+        />
+        <link
+            rel="preload"
+            href="https://cdn.jsdelivr.net/npm/@alpinejs/intersect@3.x.x/dist/cdn.min.js"
             as="script"
         />
         <link
@@ -30,36 +29,18 @@
         />
         <link rel="preload" href="/style.css" as="style" />
 
-        <!-- Scripts -->
-        <!-- <script src="/static/vendor/htmx.min.js"></script>
-        <script src="/static/vendor/alpine.min.js" defer></script> -->
         <script src="https://unpkg.com/htmx.org@1.9.9"></script>
-        <script src="https://unpkg.com/alpinejs@3.12.3/dist/cdn.min.js"></script>
+        <script
+            defer
+            src="https://cdn.jsdelivr.net/npm/@alpinejs/intersect@3.x.x/dist/cdn.min.js"
+        ></script>
+        <script
+            defer
+            src="https://unpkg.com/alpinejs@3.12.3/dist/cdn.min.js"
+        ></script>
 
         <!-- Styles -->
         <link rel="stylesheet" href="/style.css" />
-
-        <!-- Service Worker Registration -->
-        <!-- <script>
-            if ("serviceWorker" in navigator) {
-                window.addEventListener("load", () => {
-                    navigator.serviceWorker
-                        .register("/static/service-worker.js")
-                        .then((registration) => {
-                            console.log(
-                                "ServiceWorker registration successful:",
-                                registration.scope,
-                            );
-                        })
-                        .catch((error) => {
-                            console.log(
-                                "ServiceWorker registration failed:",
-                                error,
-                            );
-                        });
-                });
-            }
-        </script> -->
     </head>
     <body>
         <div
@@ -258,7 +239,7 @@
                     <div
                         id="server-list"
                         class="server-rows"
-                        hx-get="/api/servers/list"
+                        hx-get="/api/servers"
                         hx-trigger="load, refreshServers from:body"
                         hx-swap="innerHTML"
                         hx-indicator=".status-refreshing"
@@ -282,14 +263,16 @@
                                 placeholder="Map (de_dust2, surf, ...)"
                             />
                         </div>
-                        <div class="filter-input">
+                        <!-- Disabling country filter for now, currently only showing US servers -->
+                        <!-- TODO: enable after other countries are supported -->
+                        <!-- <div class="filter-input">
                             <input
                                 type="text"
                                 x-model="searchRegion"
                                 @input="debounce(() => debouncedSearchRegion = searchRegion, 300)"
                                 placeholder="Regions (US, EU, AS...)"
                             />
-                        </div>
+                        </div> -->
                         <div class="filter-input">
                             <input
                                 type="text"

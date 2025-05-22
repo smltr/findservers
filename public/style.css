@@ -29,7 +29,7 @@ body {
     background: var(--steam-dark);
     padding: 8px;
     font-size: 13px;
-    flex-shrink: 0; /* Prevent shrinking */
+    flex-shrink: 0;
 }
 
 .title-bar a {
@@ -54,12 +54,12 @@ body {
     max-width: none;
     margin: 0;
     background: var(--steam-dark);
-    overflow: hidden; /* Change from overflow-x: hidden to just overflow: hidden */
+    overflow: hidden;
 }
 
 .server-list {
     overflow-y: auto;
-    min-height: 0; /* Important for grid container */
+    min-height: 0;
 }
 
 .close-btn {
@@ -74,7 +74,7 @@ body {
 .tabs {
     display: flex;
     background: var(--steam-header);
-    flex-shrink: 0; /* Prevent shrinking */
+    flex-shrink: 0;
 }
 
 .tabs button {
@@ -119,7 +119,7 @@ body {
     position: sticky;
     top: 0;
     z-index: 10;
-    flex-shrink: 0; /* Prevent shrinking */
+    flex-shrink: 0;
 }
 
 .server-rows {
@@ -136,11 +136,9 @@ body {
 }
 
 .server-row {
-    min-width: 0; /* Add this to help prevent overflow */
+    min-width: 0;
     font-size: 13px;
     cursor: pointer;
-    /* contain: content;
-    will-change: transform; */
 }
 
 .server-row:hover {
@@ -163,12 +161,12 @@ body {
 .cell-name {
     display: flex;
     justify-content: space-between;
-    gap: 8px; /* Adds some space between name and IP */
+    gap: 8px;
 }
 
 .cell-name .server-name {
     flex: 1;
-    min-width: 0; /* Allows text truncation */
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
 }
@@ -176,7 +174,7 @@ body {
 .cell-name .server-ip {
     display: none;
     opacity: 0.5;
-    flex-shrink: 0; /* Prevents IP from shrinking */
+    flex-shrink: 0;
 }
 
 .server-row:hover .cell-name .server-ip {
@@ -384,20 +382,20 @@ label {
     display: flex;
     flex-direction: column;
     flex: 1;
-    min-height: 0; /* Important for nested flexbox scrolling */
-    overflow: hidden; /* Contain scrolling */
+    min-height: 0;
+    overflow: hidden;
 }
 
 .server-list {
     flex: 1;
     display: flex;
     flex-direction: column;
-    min-height: 0; /* Important for nested flexbox scrolling */
-    overflow: hidden; /* Contain overflow */
+    min-height: 0;
+    overflow: hidden;
 }
 
 .bottom-controls {
-    flex-shrink: 0; /* Prevents shrinking */
+    flex-shrink: 0;
     position: sticky;
     bottom: 0;
     background: var(--steam-header);
@@ -419,4 +417,8 @@ label {
 
 .filter-checkbox input[type="checkbox"] {
     cursor: pointer;
+}
+
+.cell-vac {
+    margin: auto;
 }
