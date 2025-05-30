@@ -14,26 +14,11 @@
 
         <link
             rel="preload"
-            href="https://unpkg.com/htmx.org@1.9.9"
-            as="script"
-        />
-        <link
-            rel="preload"
-            href="https://cdn.jsdelivr.net/npm/@alpinejs/intersect@3.x.x/dist/cdn.min.js"
-            as="script"
-        />
-        <link
-            rel="preload"
             href="https://unpkg.com/alpinejs@3.12.3/dist/cdn.min.js"
             as="script"
         />
         <link rel="preload" href="/style.css" as="style" />
 
-        <script src="https://unpkg.com/htmx.org@1.9.9"></script>
-        <script
-            defer
-            src="https://cdn.jsdelivr.net/npm/@alpinejs/intersect@3.x.x/dist/cdn.min.js"
-        ></script>
         <script
             defer
             src="https://unpkg.com/alpinejs@3.12.3/dist/cdn.min.js"
@@ -46,6 +31,8 @@
         <div
             class="server-browser"
             x-data="{
+                servers: [],
+                filteredServers: [],
                 selectedServer: null,
                 sortBy: 'players',
                 sortDesc: true,
@@ -61,38 +48,166 @@
                 debouncedSearchTags: '',
                 debouncedSearchRegion: '',
                 debounceTimeout: null,
+                scrollPosition: 0,
+                isDragging: false,
+                viewportHeight: 0,
 
-                // Debounce function for search inputs
+                get viewportItemCount() {
+                    if (!this.$refs.serverRows) return 50; // fallback
+                    const containerHeight = this.viewportHeight || this.$refs.serverRows.clientHeight;
+                    const rowHeight = 27; // approximate height of each server row
+                    const calculatedCount = Math.floor(containerHeight / rowHeight);
+                    return calculatedCount > 0 ? calculatedCount : 20;
+                },
+
+                updateViewportHeight() {
+                    if (this.$refs.serverRows) {
+                        this.viewportHeight = this.$refs.serverRows.clientHeight;
+                        this.scrollPosition = Math.min(this.scrollPosition, this.maxScrollPosition);
+                    }
+                },
+
+                init() {
+                    this.$nextTick(() => {
+                        this.updateViewportHeight();
+                        this.fetchServers();
+                    });
+
+                    // Listen for window resize
+                    window.addEventListener('resize', () => {
+                        this.$nextTick(() => {
+                            this.updateViewportHeight();
+                        });
+                    });
+                },
+
+                get maxScrollPosition() {
+                    return Math.max(0, this.filteredServers.length - this.viewportItemCount);
+                },
+
+                get scrollbarThumbHeight() {
+                    const viewportItems = this.viewportItemCount;
+                    if (this.filteredServers.length <= viewportItems) return 100;
+                    return Math.max(10, (viewportItems / this.filteredServers.length) * 100);
+                },
+
+                get scrollbarThumbPosition() {
+                    if (this.maxScrollPosition === 0) return 0;
+                    return (this.scrollPosition / this.maxScrollPosition) * (100 - this.scrollbarThumbHeight);
+                },
+
+                onScroll(event) {
+                    const deltaY = event.deltaY;
+                    const scrollIncrement = Math.max(1, Math.floor(this.viewportItemCount / 10));
+                    if (deltaY > 0) {
+                        this.scrollPosition = Math.min(this.scrollPosition + scrollIncrement, this.maxScrollPosition);
+                    } else {
+                        this.scrollPosition = Math.max(this.scrollPosition - scrollIncrement, 0);
+                    }
+                },
+
+                onScrollbarClick(event) {
+                    if (event.target.classList.contains('scrollbar-thumb')) return;
+                    this.updateScrollFromMouse(event);
+                },
+
+                onThumbMouseDown(event) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    this.isDragging = true;
+
+                    const startY = event.clientY;
+                    const startScrollPosition = this.scrollPosition;
+                    const scrollbar = event.target.closest('.virtual-scrollbar');
+                    const scrollbarHeight = scrollbar.getBoundingClientRect().height;
+                    const maxScroll = this.maxScrollPosition;
+
+                    const onMouseMove = (e) => {
+                        if (!this.isDragging) return;
+
+                        const deltaY = e.clientY - startY;
+                        const scrollbarTravel = scrollbarHeight * (1 - this.scrollbarThumbHeight / 100);
+                        const scrollDelta = (deltaY / scrollbarTravel) * maxScroll;
+
+                        this.scrollPosition = Math.max(0, Math.min(startScrollPosition + scrollDelta, maxScroll));
+                    };
+
+                    const onMouseUp = () => {
+                        this.isDragging = false;
+                        document.removeEventListener('mousemove', onMouseMove);
+                        document.removeEventListener('mouseup', onMouseUp);
+                    };
+
+                    document.addEventListener('mousemove', onMouseMove);
+                    document.addEventListener('mouseup', onMouseUp);
+                },
+
+                updateScrollFromMouse(event) {
+                    const scrollbar = event.currentTarget;
+                    const rect = scrollbar.getBoundingClientRect();
+                    const y = event.clientY - rect.top;
+                    const scrollbarHeight = rect.height;
+                    const thumbHeight = (this.scrollbarThumbHeight / 100) * scrollbarHeight;
+
+                    const maxThumbTop = scrollbarHeight - thumbHeight;
+                    const thumbTop = Math.max(0, Math.min(y - thumbHeight / 2, maxThumbTop));
+                    const scrollPercent = maxThumbTop > 0 ? thumbTop / maxThumbTop : 0;
+
+                    this.scrollPosition = Math.round(scrollPercent * this.maxScrollPosition);
+                },
+
+                fetchServers() {
+                    this.refreshing = true;
+                    this.scrollPosition = 0;
+                    fetch('/api/servers')
+                        .then(response => response.json())
+                        .then(data => {
+                            this.servers = data;
+                            this.filterServers();
+                            this.sortServers();
+                            this.refreshing = false;
+                        })
+                        .catch(error => {
+                            console.error('Error fetching servers:', error);
+                            this.refreshing = false;
+                        });
+                },
+
                 debounce(fn, wait) {
                     clearTimeout(this.debounceTimeout);
                     this.debounceTimeout = setTimeout(fn, wait);
                 },
 
-                // Check if any value in array matches any comma-separated terms
                 matchesAnyTerm(value, searchTerms) {
                     if (!searchTerms) return true;
-                    const terms = searchTerms.toLowerCase().split(',').map(term => term.trim());
-                    return terms.some(term => value.toLowerCase().includes(term));
+                    const allTerms = searchTerms.toLowerCase().split(',').map(term => term.trim()).filter(term => term.length > 0);
+                    if (allTerms.length === 0) return true;
+
+                    const inclusionTerms = allTerms.filter(term => !term.startsWith('-'));
+                    const exclusionTerms = allTerms.filter(term => term.startsWith('-')).map(term => term.substring(1));
+
+                    const valueLower = value.toLowerCase();
+
+                    if (exclusionTerms.length > 0 && exclusionTerms.some(term => valueLower.includes(term))) {
+                        return false;
+                    }
+
+                    if (inclusionTerms.length > 0) {
+                        return inclusionTerms.some(term => valueLower.includes(term));
+                    }
+
+                    return true;
                 },
 
-                // Filter function now works on DOM elements instead of data array
                 filterServers() {
-                    const rows = document.querySelectorAll('.server-row');
-                    rows.forEach(row => {
+                    this.scrollPosition = 0;
+                    this.filteredServers = this.servers.filter(server => {
                         try {
-                            const name = row.querySelector('.server-name')?.textContent || '';
-                            const map = row.querySelector('.cell-map')?.textContent || '';
-                            const tags = row.querySelector('.cell-tags')?.textContent || '';
-                            const region = row.querySelector('.cell-region')?.textContent || '';
-                            const playersElement = row.querySelector('.cell-players');
-                            let current = 0, max = 0;
-
-                            if (playersElement) {
-                                const currentPlayers = parseInt(playersElement.firstChild.textContent, 10) || 0;
-                                const maxPlayersText = playersElement.querySelector('.max-players')?.textContent || '';
-                                max = parseInt(maxPlayersText.replace('/', ''), 10) || 0;
-                                current = currentPlayers;
-                            }
+                            const name = server.name || '';
+                            const map = server.map || '';
+                            const tags = server.gametype || '';
+                            const region = this.formatRegion(server.region);
+                            const current = server.players || 0;
 
                             const nameMatch = this.matchesAnyTerm(name, this.debouncedSearchName);
                             const mapMatch = this.matchesAnyTerm(map, this.debouncedSearchMap);
@@ -100,61 +215,65 @@
                             const regionMatch = this.matchesAnyTerm(region, this.debouncedSearchRegion);
                             const emptyMatch = !this.hideEmpty || current > 0;
 
-                            row.style.display = (nameMatch && mapMatch && tagsMatch && regionMatch && emptyMatch) ? '' : 'none';
+                            return nameMatch && mapMatch && tagsMatch && regionMatch && emptyMatch;
                         } catch (e) {
-                            console.error('Error filtering row:', e);
-                            row.style.display = ''; // Show the row if there's an error
+                            console.error('Error filtering server:', e);
+                            return true;
                         }
                     });
                 },
 
                 sortServers() {
-                    const serverList = document.getElementById('server-list');
-                    const rows = Array.from(serverList.getElementsByClassName('server-row'));
-
-                    rows.sort((a, b) => {
+                    this.scrollPosition = 0;
+                    this.filteredServers.sort((a, b) => {
                         let aValue, bValue;
 
                         if (this.sortBy === 'players') {
-                            // Extract player count from the players cell
-                            aValue = parseInt(a.querySelector('.cell-players')?.firstChild?.textContent || '0', 10);
-                            bValue = parseInt(b.querySelector('.cell-players')?.firstChild?.textContent || '0', 10);
+                            aValue = a.players || 0;
+                            bValue = b.players || 0;
                         } else if (this.sortBy === 'name') {
-                            aValue = a.querySelector('.server-name')?.textContent || '';
-                            bValue = b.querySelector('.server-name')?.textContent || '';
+                            aValue = a.name || '';
+                            bValue = b.name || '';
                         } else if (this.sortBy === 'map') {
-                            aValue = a.querySelector('.cell-map')?.textContent || '';
-                            bValue = b.querySelector('.cell-map')?.textContent || '';
+                            aValue = a.map || '';
+                            bValue = b.map || '';
                         }
 
-                        // Apply sort direction
-                        return this.sortDesc ? (bValue - aValue) : (aValue - bValue);
+                        if (typeof aValue === 'string') {
+                            return this.sortDesc ? bValue.localeCompare(aValue) : aValue.localeCompare(bValue);
+                        } else {
+                            return this.sortDesc ? (bValue - aValue) : (aValue - bValue);
+                        }
                     });
-
-                    // Reappend sorted rows
-                    rows.forEach(row => serverList.appendChild(row));
                 },
 
-                log(serverId) {
-                    console.log(`Clicked server with ID: ${serverId}`);
+                formatRegion(code) {
+                    const regions = {
+                        0: 'US', 1: 'US', 2: 'SA', 3: 'EU',
+                        4: 'AS', 5: 'AU', 6: 'ME', 7: 'AF',
+                        255: 'WD'
+                    };
+
+                    return regions[code] || '??';
+                },
+
+                formatPlayers(players, maxPlayers) {
+                    if (players === 0) {
+                        return `<span class='zero-players'>${players}</span><span class='max-players'>/${maxPlayers}</span>`;
+                    }
+                    return `${players}<span class='max-players'>/${maxPlayers}</span>`;
+                },
+
+                launchServer(addr) {
+                    window.location.href = `steam://connect/${addr}`;
                 }
             }"
             x-init="
-                // Listen for HTMX events to update UI state
-                document.body.addEventListener('htmx:beforeRequest', () => refreshing = true);
-                document.body.addEventListener('htmx:afterRequest', () => refreshing = false);
-
-                document.body.addEventListener('htmx:afterSwap', (e) => {
-                    if (e.detail.target.id === 'server-list') {
-                        Alpine.initTree(e.detail.target);
-                    }
-                });
-
-                // Watch for search input changes
                 $watch('searchName', (value) => {
                     debounce(() => {
                         debouncedSearchName = value;
                         filterServers();
+                        sortServers();
                     }, 300);
                 });
 
@@ -162,6 +281,7 @@
                     debounce(() => {
                         debouncedSearchMap = value;
                         filterServers();
+                        sortServers();
                     }, 300);
                 });
 
@@ -169,6 +289,7 @@
                     debounce(() => {
                         debouncedSearchTags = value;
                         filterServers();
+                        sortServers();
                     }, 300);
                 });
 
@@ -176,15 +297,17 @@
                     debounce(() => {
                         debouncedSearchRegion = value;
                         filterServers();
+                        sortServers();
                     }, 300);
                 });
 
-                $watch('hideEmpty', () => filterServers());
+                $watch('hideEmpty', () => {
+                    filterServers();
+                    sortServers();
+                });
 
                 $watch('sortBy', () => sortServers());
                 $watch('sortDesc', () => sortServers());
-
-                document.body.addEventListener('htmx:afterOnLoad', () => sortServers());
             "
         >
             <div class="title-bar">
@@ -202,7 +325,7 @@
                     :class="{ active: activeTab === 'internet' }"
                     @click="activeTab = 'internet'"
                 >
-                    Internet
+                    Servers
                 </button>
                 <button
                     :class="{ active: activeTab === 'report' }"
@@ -219,9 +342,9 @@
                         <div class="header-vac">🛡️</div>
                         <div class="header-region">Region</div>
                         <div class="header-name">
-                            Servers (<span id="server-count">0</span>)
+                            <span>Servers (<span x-text="filteredServers.length"></span>)</span>
+                            <span x-show="refreshing" class="refreshing-text top">Refreshing<span class="dots"></span></span>
                         </div>
-
                         <div class="header-bot">Bots</div>
                         <div
                             class="header-players"
@@ -236,14 +359,77 @@
                         <div class="header-tags">Tags</div>
                     </div>
 
-                    <div
-                        id="server-list"
-                        class="server-rows"
-                        hx-get="/api/servers"
-                        hx-trigger="load, refreshServers from:body"
-                        hx-swap="innerHTML"
-                        hx-indicator=".status-refreshing"
-                    ></div>
+                    <div class="server-list-container">
+                        <div
+                            class="server-rows"
+                            @wheel.window="onScroll"
+                            x-show="!refreshing"
+                            x-ref="serverRows"
+                        >
+                            <template
+                                x-for="(server, index) in filteredServers.slice(scrollPosition, scrollPosition + viewportItemCount)"
+                                :key="index"
+                            >
+                            <div
+                                :id="server.addr"
+                                class="server-row"
+                                :class="{ 'selected': selectedServer === server.addr }"
+                                @click="selectedServer = server.addr"
+                                @dblclick="launchServer(server.addr)"
+                            >
+                                <div class="cell-pw"></div>
+                                <div
+                                    class="cell-vac"
+                                    x-text="server.secure ? '●' : ''"
+                                ></div>
+                                <div
+                                    class="cell-region"
+                                    x-text="formatRegion(server.region)"
+                                ></div>
+                                <div class="cell-name">
+                                    <span
+                                        class="server-name"
+                                        x-text="server.name"
+                                    ></span>
+                                    <span
+                                        class="server-ip"
+                                        x-text="server.addr"
+                                    ></span>
+                                </div>
+                                <div
+                                    class="cell-bot"
+                                    x-text="server.bots ? server.bots : ''"
+                                ></div>
+                                <div
+                                    class="cell-players"
+                                    x-html="formatPlayers(server.players, server.max_players)"
+                                ></div>
+                                <div class="cell-map" x-text="server.map"></div>
+                                <div
+                                    class="cell-tags"
+                                    x-text="server.gametype"
+                                </div>
+                            </div>
+                        </template>
+                        </div>
+
+                        <div
+                            class="virtual-scrollbar"
+                            x-show="filteredServers.length > 50"
+                            @mousedown="onScrollbarClick"
+                        >
+                            <div
+                                class="scrollbar-track"
+                            >
+                                <div
+                                    class="scrollbar-thumb"
+                                    :style="`height: ${scrollbarThumbHeight}%; top: ${scrollbarThumbPosition}%`"
+                                    :class="{ 'dragging': isDragging }"
+                                    @mousedown="onThumbMouseDown"
+                                ></div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 <div class="bottom-controls">
                     <div class="filters">
@@ -263,16 +449,14 @@
                                 placeholder="Map (de_dust2, surf, ...)"
                             />
                         </div>
-                        <!-- Disabling country filter for now, currently only showing US servers -->
-                        <!-- TODO: enable after other countries are supported -->
-                        <!-- <div class="filter-input">
+                        <div class="filter-input">
                             <input
                                 type="text"
                                 x-model="searchRegion"
                                 @input="debounce(() => debouncedSearchRegion = searchRegion, 300)"
                                 placeholder="Regions (US, EU, AS...)"
                             />
-                        </div> -->
+                        </div>
                         <div class="filter-input">
                             <input
                                 type="text"
@@ -294,13 +478,8 @@
                     </div>
 
                     <div class="actions">
-                        <span class="status-refreshing htmx-indicator"
-                            >Refreshing...</span
-                        >
-                        <button
-                            class="refresh-btn"
-                            @click="htmx.trigger('#server-list', 'refreshServers')"
-                        >
+                        <span x-show="refreshing" class="refreshing-text bottom">Refreshing<span class="dots"></span></span>
+                        <button class="refresh-btn" @click="fetchServers()">
                             Refresh Servers
                         </button>
                         <button
@@ -329,6 +508,16 @@
 
                     <h2>Changelog</h2>
                     <div class="changelog">
+                        <div class="changelog-entry">
+                            <div class="changelog-date">2025-05-30</div>
+                            <ul>
+                                <li>Added negative filtering with - syntax: -de_ filters out all maps starting with de_</li>
+                                <li>
+                                    Virtual scrolling implemented for performance
+                                </li>
+                                <li>Temporarily limiting regions to US, SA, and EU</li>
+                            </ul>
+                        </div>
                         <div class="changelog-entry">
                             <div class="changelog-date">2025-02-23</div>
                             <ul>

@@ -120,12 +120,48 @@ body {
     top: 0;
     z-index: 10;
     flex-shrink: 0;
+    padding-right: 16px;
 }
 
 .server-rows {
     flex: 1;
-    overflow-y: auto;
+    overflow-y: hidden;
     overflow-x: hidden;
+}
+
+.virtual-scrollbar {
+    width: 16px;
+    background: var(--steam-header);
+    border-left: 1px solid #000;
+    flex-shrink: 0;
+    cursor: pointer;
+    position: relative;
+}
+
+.scrollbar-track {
+    width: 100%;
+    height: 100%;
+    position: relative;
+}
+
+.scrollbar-thumb {
+    position: absolute;
+    left: 2px;
+    right: 2px;
+    background: var(--steam-light);
+    border-radius: 6px;
+    border: 1px solid #000;
+    min-height: 20px;
+    transition: background-color 0.15s ease;
+}
+
+.scrollbar-thumb:hover,
+.scrollbar-thumb.dragging {
+    background: var(--steam-yellow-faded);
+}
+
+.virtual-scrollbar:hover .scrollbar-thumb {
+    background: #8a8a8a;
 }
 
 .server-headers > div {
@@ -283,12 +319,6 @@ button.active {
     background: #5a7289;
 }
 
-.status-refreshing {
-    padding: 4px 8px;
-    color: var(--steam-yellow);
-    font-size: 13px;
-}
-
 input[type="checkbox"] {
     accent-color: var(--steam-green);
 }
@@ -394,6 +424,13 @@ label {
     overflow: hidden;
 }
 
+.server-list-container {
+    flex: 1;
+    display: flex;
+    min-height: 0;
+    position: relative;
+}
+
 .bottom-controls {
     flex-shrink: 0;
     position: sticky;
@@ -421,4 +458,46 @@ label {
 
 .cell-vac {
     margin: auto;
+}
+
+.refreshing-text {
+    color: var(--steam-yellow);
+}
+
+.refreshing-text.bottom {
+    padding: 4px 8px;
+    font-size: 13px;
+}
+
+.refreshing-text.top {
+    padding-left: 4px;
+}
+
+.dots {
+    display: inline-block;
+    width: 20px;
+    text-align: left;
+}
+
+.dots::after {
+    content: "";
+    animation: dots 1.5s steps(4, end) infinite;
+}
+
+@keyframes dots {
+    0% {
+        content: "";
+    }
+    25% {
+        content: ".";
+    }
+    50% {
+        content: "..";
+    }
+    75% {
+        content: "...";
+    }
+    100% {
+        content: "";
+    }
 }
