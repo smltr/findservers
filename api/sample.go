@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"findservers/models"
 )
@@ -26,6 +27,9 @@ func GetSampleServers(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	// testing suspense frontend
+	time.Sleep(3 * time.Second)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(jsonBytes)

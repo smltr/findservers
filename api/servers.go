@@ -1,7 +1,7 @@
 package api
 
 import (
-	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"findservers/models"
+
+	"github.com/redis/go-redis/v9"
 )
 
 type CachedData struct {
@@ -60,28 +62,27 @@ func GetServers(w http.ResponseWriter, r *http.Request) {
 	w.Write(jsonBytes)
 
 	// Save to cache asynchronously
-	// go func() {
-	if err := saveCachedServers(servers); err != nil {
-		log.Printf("Failed to save cache: %v", err)
-	}
-	// }()
+	go func() {
+		if err := saveCachedServers(servers); err != nil {
+			log.Printf("Failed to save cache: %v", err)
+		}
+	}()
 }
 
 func fetchServers(apiKey string) ([]models.Server, error) {
 	var allServers []models.Server
 	maxRetries := 3
 	// Try different regions to split up the results and avoid the 10k limit
-	//
 	regions := []string{
-		"\\region\\0", // US East
-		"\\region\\1", // US West
-		"\\region\\2", // South America
-		"\\region\\3", // Europe
-		// "\\region\\4",   // Asia
-		// "\\region\\5",   // Australia
-		// "\\region\\6",   // Middle East
-		// "\\region\\7",   // Africa
-		// "\\region\\255", // Worldwide
+		"\\region\\0",   // US East
+		"\\region\\1",   // US West
+		"\\region\\2",   // South America
+		"\\region\\3",   // Europe
+		"\\region\\4",   // Asia
+		"\\region\\5",   // Australia
+		"\\region\\6",   // Middle East
+		"\\region\\7",   // Africa
+		"\\region\\255", // Worldwide
 	}
 
 	for _, region := range regions {
@@ -143,49 +144,48 @@ func fetchServers(apiKey string) ([]models.Server, error) {
 }
 
 func getCachedServers() (*CachedData, error) {
-	blobURL := os.Getenv("BLOB_URL")
-	blobToken := os.Getenv("BLOB_READ_WRITE_TOKEN")
-	if blobURL == "" || blobToken == "" {
-		return nil, fmt.Errorf("BLOB_URL or BLOB_READ_WRITE_TOKEN not set")
+	redisURL := os.Getenv("REDIS_URL")
+	if redisURL == "" {
+		return nil, fmt.Errorf("REDIS_URL environment variable not set")
 	}
 
-	// Try to fetch servers.json from blob storage
-	req, err := http.NewRequest("GET", blobURL+"/servers.json", nil)
+	opt, err := redis.ParseURL(redisURL)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to parse Redis URL: %v", err)
 	}
 
-	req.Header.Set("Authorization", "Bearer "+blobToken)
+	rdb := redis.NewClient(opt)
+	defer rdb.Close()
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("blob not found or error: %d", resp.StatusCode)
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
+	ctx := context.Background()
+	data, err := rdb.Get(ctx, "servers_cache").Result()
+	if err == redis.Nil {
+		return nil, fmt.Errorf("cache not found")
+	} else if err != nil {
+		return nil, fmt.Errorf("redis error: %v", err)
 	}
 
 	var cachedData CachedData
-	if err := json.Unmarshal(body, &cachedData); err != nil {
-		return nil, err
+	if err := json.Unmarshal([]byte(data), &cachedData); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal cached data: %v", err)
 	}
 
 	return &cachedData, nil
 }
 
 func saveCachedServers(servers []models.Server) error {
-	blobToken := os.Getenv("BLOB_READ_WRITE_TOKEN")
-	if blobToken == "" {
-		return fmt.Errorf("BLOB_READ_WRITE_TOKEN not set")
+	redisURL := os.Getenv("REDIS_URL")
+	if redisURL == "" {
+		return fmt.Errorf("REDIS_URL environment variable not set")
 	}
+
+	opt, err := redis.ParseURL(redisURL)
+	if err != nil {
+		return fmt.Errorf("failed to parse Redis URL: %v", err)
+	}
+
+	rdb := redis.NewClient(opt)
+	defer rdb.Close()
 
 	cachedData := CachedData{
 		Servers:   servers,
@@ -194,32 +194,15 @@ func saveCachedServers(servers []models.Server) error {
 
 	jsonData, err := json.Marshal(cachedData)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to marshal cached data: %v", err)
 	}
 
-	// PUT to blob storage using proper API endpoint
-	req, err := http.NewRequest("PUT", "https://blob.vercel-storage.com/servers.json", bytes.NewReader(jsonData))
+	ctx := context.Background()
+	err = rdb.Set(ctx, "servers_cache", jsonData, 10*time.Minute).Err()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to save to Redis: %v", err)
 	}
 
-	req.Header.Set("Authorization", "Bearer "+blobToken)
-	req.Header.Set("x-api-version", "9")
-	req.Header.Set("X-Add-Random-Suffix", "0") // Don't add random suffix, we want consistent filename
-	req.Header.Set("X-Content-Type", "application/json")
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("failed to save to blob: %d - %s", resp.StatusCode, string(body))
-	}
-
-	log.Printf("Successfully cached server data")
+	log.Printf("Successfully cached server data in Redis")
 	return nil
 }
