@@ -408,6 +408,58 @@ label {
     color: #dadada;
 }
 
+.info-section {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+    padding: 1rem;
+}
+
+.info-content {
+    max-width: 600px;
+    margin: 0 auto;
+    border-radius: 8px;
+}
+
+.info-section h2 {
+    margin-bottom: 1rem;
+    color: #fff;
+}
+
+.info-section h3 {
+    margin-top: 2rem;
+    margin-bottom: 0.5rem;
+    color: var(--steam-yellow);
+    font-weight: bold;
+}
+
+.info-section p {
+    margin-bottom: 1rem;
+    line-height: 1.6;
+    color: #dadada;
+}
+
+.info-section ul {
+    margin: 0 0 1rem 0;
+    padding-left: 1.2rem;
+}
+
+.info-section li {
+    margin: 0.3rem 0;
+    color: #dadada;
+    line-height: 1.6;
+}
+
+.info-section code {
+    background: var(--steam-header);
+    color: var(--steam-yellow);
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.9em;
+    border: 1px solid #000;
+}
+
 .internet-tab {
     display: flex;
     flex-direction: column;

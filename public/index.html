@@ -48,6 +48,7 @@
                 debouncedSearchTags: '',
                 debouncedSearchRegion: '',
                 debounceTimeout: null,
+                urlParamsLoaded: false,
                 scrollPosition: 0,
                 isDragging: false,
                 viewportHeight: 0,
@@ -247,11 +248,68 @@
                     });
                 },
 
+                parseUrlParams() {
+                    const urlParams = new URLSearchParams(window.location.search);
+                    
+                    // Parse and set filter values from URL
+                    const name = urlParams.get('name');
+                    const map = urlParams.get('map');
+                    const regions = urlParams.get('regions');
+                    const tags = urlParams.get('tags');
+                    const hideEmpty = urlParams.get('hideEmpty');
+                    
+                    if (name) {
+                        this.searchName = name;
+                        this.debouncedSearchName = name;
+                    }
+                    
+                    if (map) {
+                        this.searchMap = map;
+                        this.debouncedSearchMap = map;
+                    }
+                    
+                    if (regions) {
+                        this.searchRegion = regions;
+                        this.debouncedSearchRegion = regions;
+                    }
+                    
+                    if (tags) {
+                        this.searchTags = tags;
+                        this.debouncedSearchTags = tags;
+                    }
+                    
+                    if (hideEmpty !== null) {
+                        this.hideEmpty = hideEmpty === 'true';
+                    }
+                    
+                    // Set flag if any parameters were loaded
+                    if (name || map || regions || tags || hideEmpty !== null) {
+                        this.urlParamsLoaded = true;
+                        setTimeout(() => this.urlParamsLoaded = false, 3000);
+                    }
+                },
+
+                updateUrlParams() {
+                    const params = new URLSearchParams();
+                    
+                    if (this.searchName) params.set('name', this.searchName);
+                    if (this.searchMap) params.set('map', this.searchMap);
+                    if (this.searchRegion) params.set('regions', this.searchRegion);
+                    if (this.searchTags) params.set('tags', this.searchTags);
+                    if (this.hideEmpty) params.set('hideEmpty', 'true');
+                    
+                    const newUrl = params.toString() ? 
+                        `${window.location.pathname}?${params.toString()}` : 
+                        window.location.pathname;
+                    
+                    window.history.replaceState({}, '', newUrl);
+                },
+
                 formatRegion(code) {
                     const regions = {
                         0: 'US', 1: 'US', 2: 'SA', 3: 'EU',
                         4: 'AS', 5: 'AU', 6: 'ME', 7: 'AF',
-                        255: 'WD'
+                        255: 'WW'
                     };
 
                     return regions[code] || '??';
@@ -269,11 +327,15 @@
                 }
             }"
             x-init="
+                // Parse URL parameters on initialization
+                parseUrlParams();
+                
                 $watch('searchName', (value) => {
                     debounce(() => {
                         debouncedSearchName = value;
                         filterServers();
                         sortServers();
+                        updateUrlParams();
                     }, 500);
                 });
 
@@ -282,6 +344,7 @@
                         debouncedSearchMap = value;
                         filterServers();
                         sortServers();
+                        updateUrlParams();
                     }, 500);
                 });
 
@@ -290,6 +353,7 @@
                         debouncedSearchTags = value;
                         filterServers();
                         sortServers();
+                        updateUrlParams();
                     }, 500);
                 });
 
@@ -298,12 +362,14 @@
                         debouncedSearchRegion = value;
                         filterServers();
                         sortServers();
+                        updateUrlParams();
                     }, 500);
                 });
 
                 $watch('hideEmpty', () => {
                     filterServers();
                     sortServers();
+                    updateUrlParams();
                 });
 
                 $watch('sortBy', () => sortServers());
@@ -328,6 +394,12 @@
                     Servers
                 </button>
                 <button
+                    :class="{ active: activeTab === 'info' }"
+                    @click="activeTab = 'info'"
+                >
+                    Info
+                </button>
+                <button
                     :class="{ active: activeTab === 'report' }"
                     @click="activeTab = 'report'"
                 >
@@ -344,6 +416,7 @@
                         <div class="header-name">
                             <span>Servers (<span x-text="filteredServers.length"></span>)</span>
                             <span x-show="refreshing" class="refreshing-text top">Refreshing<span class="dots"></span></span>
+                            <span x-show="urlParamsLoaded" class="refreshing-text top" style="color: var(--steam-yellow);">Filters loaded from URL</span>
                         </div>
                         <div class="header-bot">Bots</div>
                         <div
@@ -489,6 +562,36 @@
                             Connect
                         </button>
                     </div>
+                </div>
+            </div>
+
+            <div x-show="activeTab === 'info'" class="info-section">
+                <div class="info-content">
+                    <h2>How to use</h2>
+                    <h3>Server list</h3>
+                    <ul>
+                        <li>When opening app, if cached servers are more than 5 minutes old, they will be refreshed. This may take a few moments.</li>
+                        <li>You can connect to a server by double clicking it, or selecting it and hitting 'Connect' at the bottom right.</li>
+                        <li>The IP address is shown when hovering over a server, and can be copied and used to connect by entering 'connect [IP]' in console.</li>
+                    </ul>
+
+                    <h3>Filters</h3>
+                    <ul>
+                        <li>Multiple filters can be entered by separating with a comma. E.g. tags: '1v1, arena'</li>
+                        <li>There are both positive and negative filters.</li>
+                        <li>Typing 'de_, aim_' into the map filter will show only servers with a map containing 'de_' or 'aim_'</li>
+                        <li>Typing 'de_, -dust2' will only show maps containing 'de_' but not maps containing 'dust2'</li>
+                    </ul>
+
+                    <h3>URL Parameters (Bookmarkable Filters)</h3>
+                    <ul>
+                        <li>You can bookmark your favorite filter combinations using URL parameters</li>
+                        <li>Available parameters: <code>name</code>, <code>map</code>, <code>regions</code>, <code>tags</code>, <code>hideEmpty</code></li>
+                        <li>Example: <code>findservers.net?regions=US,EU&map=de_dust2&hideEmpty=true</code></li>
+                        <li>Example: <code>findservers.net?name=surf&regions=US&tags=beginner</code></li>
+                        <li>Example: <code>findservers.net?map=aim_&tags=ffa,dm</code></li>
+                        <li>The URL automatically updates as you change filters, making it easy to share or bookmark</li>
+                    </ul>
                 </div>
             </div>
 
