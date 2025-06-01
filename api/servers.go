@@ -31,7 +31,7 @@ func GetServers(w http.ResponseWriter, r *http.Request) {
 	// TODO make this work, currently just fetches new servers each time
 	// Try to get cached data first
 	cachedData, err := getCachedServers()
-	if err == nil && time.Since(cachedData.Timestamp) < 5*time.Minute {
+	if err == nil && time.Since(cachedData.Timestamp) < 1*time.Minute {
 		log.Printf("Using cached data from %v", cachedData.Timestamp)
 		jsonBytes, err := json.Marshal(cachedData.Servers)
 		if err != nil {
@@ -130,7 +130,6 @@ func fetchServers(apiKey string) ([]models.Server, error) {
 				break
 			}
 
-			time.Sleep(time.Second * 2)
 		}
 	}
 
