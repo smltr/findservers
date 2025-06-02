@@ -206,7 +206,7 @@
                         try {
                             const name = server.name || '';
                             const map = server.map || '';
-                            const tags = server.gametype || '';
+                            const tags = Array.isArray(server.tags) ? server.tags.join(' ') : (server.tags || '');
                             const region = this.formatRegion(server.region);
                             const current = server.players || 0;
 
@@ -250,38 +250,38 @@
 
                 parseUrlParams() {
                     const urlParams = new URLSearchParams(window.location.search);
-                    
+
                     // Parse and set filter values from URL
                     const name = urlParams.get('name');
                     const map = urlParams.get('map');
                     const regions = urlParams.get('regions');
                     const tags = urlParams.get('tags');
                     const hideEmpty = urlParams.get('hideEmpty');
-                    
+
                     if (name) {
                         this.searchName = name;
                         this.debouncedSearchName = name;
                     }
-                    
+
                     if (map) {
                         this.searchMap = map;
                         this.debouncedSearchMap = map;
                     }
-                    
+
                     if (regions) {
                         this.searchRegion = regions;
                         this.debouncedSearchRegion = regions;
                     }
-                    
+
                     if (tags) {
                         this.searchTags = tags;
                         this.debouncedSearchTags = tags;
                     }
-                    
+
                     if (hideEmpty !== null) {
                         this.hideEmpty = hideEmpty === 'true';
                     }
-                    
+
                     // Set flag if any parameters were loaded
                     if (name || map || regions || tags || hideEmpty !== null) {
                         this.urlParamsLoaded = true;
@@ -291,23 +291,23 @@
 
                 updateUrlParams() {
                     const params = new URLSearchParams();
-                    
+
                     if (this.searchName) params.set('name', this.searchName);
                     if (this.searchMap) params.set('map', this.searchMap);
                     if (this.searchRegion) params.set('regions', this.searchRegion);
                     if (this.searchTags) params.set('tags', this.searchTags);
                     if (this.hideEmpty) params.set('hideEmpty', 'true');
-                    
-                    const newUrl = params.toString() ? 
-                        `${window.location.pathname}?${params.toString()}` : 
+
+                    const newUrl = params.toString() ?
+                        `${window.location.pathname}?${params.toString()}` :
                         window.location.pathname;
-                    
+
                     window.history.replaceState({}, '', newUrl);
                 },
 
                 formatRegion(code) {
                     const regions = {
-                        0: 'US', 1: 'US', 2: 'SA', 3: 'EU',
+                        '-1': 'US', 0: 'US', 1: 'US', 2: 'SA', 3: 'EU',
                         4: 'AS', 5: 'AU', 6: 'ME', 7: 'AF',
                         255: 'WW'
                     };
@@ -329,7 +329,7 @@
             x-init="
                 // Parse URL parameters on initialization
                 parseUrlParams();
-                
+
                 $watch('searchName', (value) => {
                     debounce(() => {
                         debouncedSearchName = value;
@@ -444,11 +444,11 @@
                                 :key="index"
                             >
                             <div
-                                :id="server.addr"
+                                :id="server.address"
                                 class="server-row"
-                                :class="{ 'selected': selectedServer === server.addr }"
-                                @click="selectedServer = server.addr"
-                                @dblclick="launchServer(server.addr)"
+                                :class="{ 'selected': selectedServer === server.address }"
+                                @click="selectedServer = server.address"
+                                @dblclick="launchServer(server.address)"
                             >
                                 <div class="cell-pw"></div>
                                 <div
@@ -466,7 +466,7 @@
                                     ></span>
                                     <span
                                         class="server-ip"
-                                        x-text="server.addr"
+                                        x-text="server.address"
                                     ></span>
                                 </div>
                                 <div
@@ -480,7 +480,7 @@
                                 <div class="cell-map" x-text="server.map"></div>
                                 <div
                                     class="cell-tags"
-                                    x-text="server.gametype"
+                                    x-text="Array.isArray(server.tags) ? server.tags.join(', ') : server.tags"
                                 </div>
                             </div>
                         </template>
@@ -570,17 +570,16 @@
                     <h2>How to use</h2>
                     <h3>Server list</h3>
                     <ul>
-                        <li>When opening app, if cached servers are more than 5 minutes old, they will be refreshed. This may take a few moments.</li>
-                        <li>You can connect to a server by double clicking it, or selecting it and hitting 'Connect' at the bottom right.</li>
+                        <li>You can connect to a server by double clicking it, or selecting it and hitting <code>Connect<code> at the bottom right.</li>
                         <li>The IP address is shown when hovering over a server, and can be copied and used to connect by entering 'connect [IP]' in console.</li>
                     </ul>
 
                     <h3>Filters</h3>
                     <ul>
-                        <li>Multiple filters can be entered by separating with a comma. E.g. tags: '1v1, arena'</li>
+                        <li>Multiple filters can be entered by separating with a comma. E.g. tags: <code>1v1, arena</code></li>
                         <li>There are both positive and negative filters.</li>
-                        <li>Typing 'de_, aim_' into the map filter will show only servers with a map containing 'de_' or 'aim_'</li>
-                        <li>Typing 'de_, -dust2' will only show maps containing 'de_' but not maps containing 'dust2'</li>
+                        <li>Typing <code>de_, aim_</code> into the map filter will show only servers with a map containing <code>de_</code> or <code>aim_</code></li>
+                        <li>Typing <code>de_, -dust2</code> will only show maps containing <code>de_</code> but not maps containing <code>dust2</code></li>
                     </ul>
 
                     <h3>URL Parameters (Bookmarkable Filters)</h3>

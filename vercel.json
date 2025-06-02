@@ -1,8 +1,0 @@
-{
-  "crons": [
-    {
-      "path": "/cron/refresh-servers",
-      "schedule": "0 0 * * *"
-    }
-  ]
-}
