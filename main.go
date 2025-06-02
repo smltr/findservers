@@ -15,7 +15,7 @@ func main() {
 	cache.RefreshServerCache()
 	go func() {
 		for {
-			time.Sleep(time.Minute)
+			time.Sleep(5 * time.Minute)
 			cache.RefreshServerCache()
 		}
 	}()
