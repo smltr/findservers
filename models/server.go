@@ -1,6 +1,9 @@
 package models
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 //
 // Example CS2 server returned from the Steam Web API
@@ -25,6 +28,7 @@ import "time"
 // },
 //
 // Region codes:
+// -1 - US this isn't specified, but upon manually testing all IPs with this code are in the US
 // 0 - US East
 // 1 - US West
 // 2 - South America
@@ -34,25 +38,56 @@ import "time"
 // 6 - Middle East
 // 7 - Africa
 
+type ServerRaw struct {
+	Addr       string    `json:"addr"`
+	GamePort   int       `json:"gameport"`
+	SteamID    string    `json:"steamid"`
+	Name       string    `json:"name"`
+	AppID      int       `json:"appid"`
+	GameDir    string    `json:"gamedir"`
+	Version    string    `json:"version"`
+	Product    string    `json:"product"`
+	Region     int       `json:"region"`
+	Players    int       `json:"players"`
+	MaxPlayers int       `json:"max_players"`
+	Bots       int       `json:"bots"`
+	Map        string    `json:"map"`
+	Secure     bool      `json:"secure"`
+	Dedicated  bool      `json:"dedicated"`
+	OS         string    `json:"os"`
+	GameType   string    `json:"gametype"`
+	FirstSeen  time.Time `json:"first_seen"`
+	LastSeen   time.Time `json:"last_seen"`
+}
+
 type Server struct {
-	Addr          string    `json:"addr"`
-	GamePort      int       `json:"gameport"`
-	SteamID       string    `json:"steamid"`
-	Name          string    `json:"name"`
-	AppID         int       `json:"appid"`
-	GameDir       string    `json:"gamedir"`
-	Version       string    `json:"version"`
-	Product       string    `json:"product"`
-	Region        int       `json:"region"`
-	ContinentCode string    `json:"continent_code"`
-	Players       int       `json:"players"`
-	MaxPlayers    int       `json:"max_players"`
-	Bots          int       `json:"bots"`
-	Map           string    `json:"map"`
-	Secure        bool      `json:"secure"`
-	Dedicated     bool      `json:"dedicated"`
-	OS            string    `json:"os"`
-	GameType      string    `json:"gametype"`
-	FirstSeen     time.Time `json:"first_seen"`
-	LastSeen      time.Time `json:"last_seen"`
+	IP         string   `json:"ip"`
+	Port       int      `json:"port"`
+	Address    string   `json:"address"`
+	Name       string   `json:"name"`
+	Region     int      `json:"region"`
+	Players    int      `json:"players"`
+	MaxPlayers int      `json:"max_players"`
+	Bots       int      `json:"bots"`
+	Map        string   `json:"map"`
+	Secure     bool     `json:"secure"`
+	Dedicated  bool     `json:"dedicated"`
+	Tags       []string `json:"tags"`
+}
+
+func CleanServer(s ServerRaw) Server {
+	return Server{
+		IP:         strings.Split(s.Addr, ":")[0],
+		Port:       s.GamePort,
+		Address:    s.Addr,
+		Name:       s.Name,
+		Region:     s.Region,
+		Players:    s.Players,
+		MaxPlayers: s.MaxPlayers,
+		Bots:       s.Bots,
+		Map:        s.Map,
+		Secure:     s.Secure,
+		Dedicated:  s.Dedicated,
+		Tags:       strings.Split(s.GameType, ","),
+	}
 }
