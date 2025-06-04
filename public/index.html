@@ -5,660 +5,558 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>FindServers.net</title>
 
-        <!-- PWA Meta Tags -->
         <meta name="theme-color" content="#4c5844" />
-        <meta
-            name="description"
-            content="Browse Counter-Strike 2 community servers"
-        />
+        <meta name="description" content="Browse Counter-Strike 2 community servers" />
 
-        <link
-            rel="preload"
-            href="https://unpkg.com/alpinejs@3.12.3/dist/cdn.min.js"
-            as="script"
-        />
-        <link rel="preload" href="/style.css" as="style" />
+        <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+        <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+        <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-        <script
-            defer
-            src="https://unpkg.com/alpinejs@3.12.3/dist/cdn.min.js"
-        ></script>
-
-        <!-- Styles -->
         <link rel="stylesheet" href="/style.css" />
     </head>
     <body>
-        <div
-            class="server-browser"
-            x-data="{
-                servers: [],
-                filteredServers: [],
-                selectedServer: null,
-                sortBy: 'players',
-                sortDesc: true,
-                activeTab: 'internet',
-                refreshing: false,
-                searchName: '',
-                searchMap: '',
-                searchTags: '',
-                searchRegion: '',
-                hideEmpty: false,
-                debouncedSearchName: '',
-                debouncedSearchMap: '',
-                debouncedSearchTags: '',
-                debouncedSearchRegion: '',
-                debounceTimeout: null,
-                urlParamsLoaded: false,
-                scrollPosition: 0,
-                isDragging: false,
-                viewportHeight: 0,
+        <div id="root"></div>
 
-                get viewportItemCount() {
-                    if (!this.$refs.serverRows) return 50; // fallback
-                    const containerHeight = this.viewportHeight || this.$refs.serverRows.clientHeight;
-                    const rowHeight = 27; // approximate height of each server row
-                    const calculatedCount = Math.floor(containerHeight / rowHeight);
-                    return calculatedCount > 0 ? calculatedCount : 20;
-                },
+        <script type="text/babel">
+            const { useState, useEffect, useCallback, useRef } = React;
 
-                updateViewportHeight() {
-                    if (this.$refs.serverRows) {
-                        this.viewportHeight = this.$refs.serverRows.clientHeight;
-                        this.scrollPosition = Math.min(this.scrollPosition, this.maxScrollPosition);
+            function ServerBrowser() {
+                const [servers, setServers] = useState([]);
+                const [filteredServers, setFilteredServers] = useState([]);
+                const [selectedServer, setSelectedServer] = useState(null);
+                const [sortBy, setSortBy] = useState("players");
+                const [sortDesc, setSortDesc] = useState(true);
+                const [activeTab, setActiveTab] = useState("internet");
+                const [refreshing, setRefreshing] = useState(false);
+                const [searchName, setSearchName] = useState("");
+                const [searchMap, setSearchMap] = useState("");
+                const [searchTags, setSearchTags] = useState("");
+                const [searchRegion, setSearchRegion] = useState("");
+                const [hideEmpty, setHideEmpty] = useState(false);
+                const [debouncedSearchName, setDebouncedSearchName] = useState("");
+                const [debouncedSearchMap, setDebouncedSearchMap] = useState("");
+                const [debouncedSearchTags, setDebouncedSearchTags] = useState("");
+                const [debouncedSearchRegion, setDebouncedSearchRegion] = useState("");
+                const [urlParamsLoaded, setUrlParamsLoaded] = useState(false);
+                const [scrollPosition, setScrollPosition] = useState(0);
+                const [isDragging, setIsDragging] = useState(false);
+                const [viewportHeight, setViewportHeight] = useState(0);
+
+                const serverRowsRef = useRef(null);
+                const debounceTimeoutRef = useRef(null);
+
+                const viewportItemCount = viewportHeight > 0 ? Math.max(20, Math.floor(viewportHeight / 27)) : 50;
+                const maxScrollPosition = Math.max(0, filteredServers.length - viewportItemCount);
+                const scrollbarThumbHeight = filteredServers.length <= viewportItemCount ? 100 : Math.max(10, (viewportItemCount / filteredServers.length) * 100);
+                const scrollbarThumbPosition = maxScrollPosition === 0 ? 0 : (scrollPosition / maxScrollPosition) * (100 - scrollbarThumbHeight);
+
+                const updateViewportHeight = useCallback(() => {
+                    if (serverRowsRef.current) {
+                        setViewportHeight(serverRowsRef.current.clientHeight);
+                        setScrollPosition((prev) => Math.min(prev, maxScrollPosition));
                     }
-                },
+                }, [maxScrollPosition]);
 
-                init() {
-                    this.$nextTick(() => {
-                        this.updateViewportHeight();
-                        this.fetchServers();
-                    });
+                const debounce = useCallback((fn, wait) => {
+                    clearTimeout(debounceTimeoutRef.current);
+                    debounceTimeoutRef.current = setTimeout(fn, wait);
+                }, []);
 
-                    // Listen for window resize
-                    window.addEventListener('resize', () => {
-                        this.$nextTick(() => {
-                            this.updateViewportHeight();
+                const matchesAnyTerm = useCallback((value, searchTerms) => {
+                    if (!searchTerms) return true;
+                    const allTerms = searchTerms
+                        .toLowerCase()
+                        .split(",")
+                        .map((term) => term.trim())
+                        .filter((term) => term.length > 0);
+                    if (allTerms.length === 0) return true;
+
+                    const inclusionTerms = allTerms.filter((term) => !term.startsWith("-"));
+                    const exclusionTerms = allTerms.filter((term) => term.startsWith("-")).map((term) => term.substring(1));
+
+                    const valueLower = value.toLowerCase();
+
+                    if (exclusionTerms.length > 0 && exclusionTerms.some((term) => valueLower.includes(term))) {
+                        return false;
+                    }
+
+                    if (inclusionTerms.length > 0) {
+                        return inclusionTerms.some((term) => valueLower.includes(term));
+                    }
+
+                    return true;
+                }, []);
+
+                const filterServers = useCallback(() => {
+                    setScrollPosition(0);
+                    const filtered = servers
+                        .filter((server) => {
+                            try {
+                                const name = server.name || "";
+                                const map = server.map || "";
+                                const tags = Array.isArray(server.tags) ? server.tags.join(" ") : server.tags || "";
+                                const region = formatRegion(server.region);
+                                const current = server.players || 0;
+
+                                const nameMatch = matchesAnyTerm(name, debouncedSearchName);
+                                const mapMatch = matchesAnyTerm(map, debouncedSearchMap);
+                                const tagsMatch = matchesAnyTerm(tags, debouncedSearchTags);
+                                const regionMatch = matchesAnyTerm(region, debouncedSearchRegion);
+                                const emptyMatch = !hideEmpty || current > 0;
+
+                                return nameMatch && mapMatch && tagsMatch && regionMatch && emptyMatch;
+                            } catch (e) {
+                                console.error("Error filtering server:", e);
+                                return true;
+                            }
+                        })
+                        .sort((a, b) => {
+                            let aValue, bValue;
+
+                            aValue = a.players || 0;
+                            bValue = b.players || 0;
+
+                            return sortDesc ? bValue - aValue : aValue - bValue;
                         });
-                    });
-                },
 
-                get maxScrollPosition() {
-                    return Math.max(0, this.filteredServers.length - this.viewportItemCount);
-                },
+                    setFilteredServers(filtered);
+                }, [servers, debouncedSearchName, debouncedSearchMap, debouncedSearchTags, debouncedSearchRegion, hideEmpty, matchesAnyTerm]);
 
-                get scrollbarThumbHeight() {
-                    const viewportItems = this.viewportItemCount;
-                    if (this.filteredServers.length <= viewportItems) return 100;
-                    return Math.max(10, (viewportItems / this.filteredServers.length) * 100);
-                },
+                const fetchServers = useCallback(() => {
+                    setRefreshing(true);
+                    setScrollPosition(0);
+                    fetch("/api/servers")
+                        .then((response) => response.json())
+                        .then((data) => {
+                            setServers(data);
+                            setRefreshing(false);
+                        })
+                        .catch((error) => {
+                            console.error("Error fetching servers:", error);
+                            setRefreshing(false);
+                        });
+                }, []);
 
-                get scrollbarThumbPosition() {
-                    if (this.maxScrollPosition === 0) return 0;
-                    return (this.scrollPosition / this.maxScrollPosition) * (100 - this.scrollbarThumbHeight);
-                },
+                const parseUrlParams = useCallback(() => {
+                    const urlParams = new URLSearchParams(window.location.search);
 
-                onScroll(event) {
-                    const deltaY = event.deltaY;
-                    const scrollIncrement = Math.max(1, Math.floor(this.viewportItemCount / 10));
-                    if (deltaY > 0) {
-                        this.scrollPosition = Math.min(this.scrollPosition + scrollIncrement, this.maxScrollPosition);
-                    } else {
-                        this.scrollPosition = Math.max(this.scrollPosition - scrollIncrement, 0);
+                    const name = urlParams.get("name");
+                    const map = urlParams.get("map");
+                    const regions = urlParams.get("regions");
+                    const tags = urlParams.get("tags");
+                    const hideEmptyParam = urlParams.get("hideEmpty");
+
+                    if (name) {
+                        setSearchName(name);
+                        setDebouncedSearchName(name);
                     }
-                },
 
-                onScrollbarClick(event) {
-                    if (event.target.classList.contains('scrollbar-thumb')) return;
-                    this.updateScrollFromMouse(event);
-                },
+                    if (map) {
+                        setSearchMap(map);
+                        setDebouncedSearchMap(map);
+                    }
 
-                onThumbMouseDown(event) {
+                    if (regions) {
+                        setSearchRegion(regions);
+                        setDebouncedSearchRegion(regions);
+                    }
+
+                    if (tags) {
+                        setSearchTags(tags);
+                        setDebouncedSearchTags(tags);
+                    }
+
+                    if (hideEmptyParam !== null) {
+                        setHideEmpty(hideEmptyParam === "true");
+                    }
+
+                    if (name || map || regions || tags || hideEmptyParam !== null) {
+                        setUrlParamsLoaded(true);
+                        setTimeout(() => setUrlParamsLoaded(false), 3000);
+                    }
+                }, []);
+
+                const updateUrlParams = useCallback(() => {
+                    const params = new URLSearchParams();
+
+                    if (searchName) params.set("name", searchName);
+                    if (searchMap) params.set("map", searchMap);
+                    if (searchRegion) params.set("regions", searchRegion);
+                    if (searchTags) params.set("tags", searchTags);
+                    if (hideEmpty) params.set("hideEmpty", "true");
+
+                    const newUrl = params.toString() ? `${window.location.pathname}?${params.toString()}` : window.location.pathname;
+
+                    window.history.replaceState({}, "", newUrl);
+                }, [searchName, searchMap, searchRegion, searchTags, hideEmpty]);
+
+                const formatRegion = (code) => {
+                    const regions = {
+                        "-1": "US",
+                        0: "US",
+                        1: "US",
+                        2: "SA",
+                        3: "EU",
+                        4: "AS",
+                        5: "AU",
+                        6: "ME",
+                        7: "AF",
+                        255: "WW",
+                    };
+                    return regions[code] || "??";
+                };
+
+                const formatPlayers = (players, maxPlayers) => {
+                    if (players === 0) {
+                        return (
+                            <span>
+                                <span className="zero-players">{players}</span>
+                                <span className="max-players">/{maxPlayers}</span>
+                            </span>
+                        );
+                    }
+                    return (
+                        <span>
+                            {players}
+                            <span className="max-players">/{maxPlayers}</span>
+                        </span>
+                    );
+                };
+
+                const launchServer = (addr) => {
+                    window.location.href = `steam://connect/${addr}`;
+                };
+
+                const onScroll = (event) => {
+                    const deltaY = event.deltaY;
+                    const scrollIncrement = Math.max(1, Math.floor(viewportItemCount / 10));
+                    if (deltaY > 0) {
+                        setScrollPosition((prev) => Math.min(prev + scrollIncrement, maxScrollPosition));
+                    } else {
+                        setScrollPosition((prev) => Math.max(prev - scrollIncrement, 0));
+                    }
+                };
+
+                const onScrollbarClick = (event) => {
+                    if (event.target.classList.contains("scrollbar-thumb")) return;
+                    updateScrollFromMouse(event);
+                };
+
+                const onThumbMouseDown = (event) => {
                     event.preventDefault();
                     event.stopPropagation();
-                    this.isDragging = true;
+                    setIsDragging(true);
 
                     const startY = event.clientY;
-                    const startScrollPosition = this.scrollPosition;
-                    const scrollbar = event.target.closest('.virtual-scrollbar');
+                    const startScrollPosition = scrollPosition;
+                    const scrollbar = event.target.closest(".virtual-scrollbar");
                     const scrollbarHeight = scrollbar.getBoundingClientRect().height;
-                    const maxScroll = this.maxScrollPosition;
+                    const maxScroll = maxScrollPosition;
 
                     const onMouseMove = (e) => {
-                        if (!this.isDragging) return;
-
                         const deltaY = e.clientY - startY;
-                        const scrollbarTravel = scrollbarHeight * (1 - this.scrollbarThumbHeight / 100);
+                        const scrollbarTravel = scrollbarHeight * (1 - scrollbarThumbHeight / 100);
                         const scrollDelta = (deltaY / scrollbarTravel) * maxScroll;
 
-                        this.scrollPosition = Math.max(0, Math.min(startScrollPosition + scrollDelta, maxScroll));
+                        setScrollPosition(Math.max(0, Math.min(startScrollPosition + scrollDelta, maxScroll)));
                     };
 
                     const onMouseUp = () => {
-                        this.isDragging = false;
-                        document.removeEventListener('mousemove', onMouseMove);
-                        document.removeEventListener('mouseup', onMouseUp);
+                        setIsDragging(false);
+                        document.removeEventListener("mousemove", onMouseMove);
+                        document.removeEventListener("mouseup", onMouseUp);
                     };
 
-                    document.addEventListener('mousemove', onMouseMove);
-                    document.addEventListener('mouseup', onMouseUp);
-                },
+                    document.addEventListener("mousemove", onMouseMove);
+                    document.addEventListener("mouseup", onMouseUp);
+                };
 
-                updateScrollFromMouse(event) {
+                const updateScrollFromMouse = (event) => {
                     const scrollbar = event.currentTarget;
                     const rect = scrollbar.getBoundingClientRect();
                     const y = event.clientY - rect.top;
                     const scrollbarHeight = rect.height;
-                    const thumbHeight = (this.scrollbarThumbHeight / 100) * scrollbarHeight;
+                    const thumbHeight = (scrollbarThumbHeight / 100) * scrollbarHeight;
 
                     const maxThumbTop = scrollbarHeight - thumbHeight;
                     const thumbTop = Math.max(0, Math.min(y - thumbHeight / 2, maxThumbTop));
                     const scrollPercent = maxThumbTop > 0 ? thumbTop / maxThumbTop : 0;
 
-                    this.scrollPosition = Math.round(scrollPercent * this.maxScrollPosition);
-                },
+                    setScrollPosition(Math.round(scrollPercent * maxScrollPosition));
+                };
 
-                fetchServers() {
-                    this.refreshing = true;
-                    this.scrollPosition = 0;
-                    fetch('/api/servers')
-                        .then(response => response.json())
-                        .then(data => {
-                            this.servers = data;
-                            this.filterServers();
-                            this.sortServers();
-                            this.refreshing = false;
-                        })
-                        .catch(error => {
-                            console.error('Error fetching servers:', error);
-                            this.refreshing = false;
-                        });
-                },
+                useEffect(() => {
+                    parseUrlParams();
+                    updateViewportHeight();
+                    fetchServers();
 
-                debounce(fn, wait) {
-                    clearTimeout(this.debounceTimeout);
-                    this.debounceTimeout = setTimeout(fn, wait);
-                },
-
-                matchesAnyTerm(value, searchTerms) {
-                    if (!searchTerms) return true;
-                    const allTerms = searchTerms.toLowerCase().split(',').map(term => term.trim()).filter(term => term.length > 0);
-                    if (allTerms.length === 0) return true;
-
-                    const inclusionTerms = allTerms.filter(term => !term.startsWith('-'));
-                    const exclusionTerms = allTerms.filter(term => term.startsWith('-')).map(term => term.substring(1));
-
-                    const valueLower = value.toLowerCase();
-
-                    if (exclusionTerms.length > 0 && exclusionTerms.some(term => valueLower.includes(term))) {
-                        return false;
-                    }
-
-                    if (inclusionTerms.length > 0) {
-                        return inclusionTerms.some(term => valueLower.includes(term));
-                    }
-
-                    return true;
-                },
-
-                filterServers() {
-                    this.scrollPosition = 0;
-                    this.filteredServers = this.servers.filter(server => {
-                        try {
-                            const name = server.name || '';
-                            const map = server.map || '';
-                            const tags = Array.isArray(server.tags) ? server.tags.join(' ') : (server.tags || '');
-                            const region = this.formatRegion(server.region);
-                            const current = server.players || 0;
-
-                            const nameMatch = this.matchesAnyTerm(name, this.debouncedSearchName);
-                            const mapMatch = this.matchesAnyTerm(map, this.debouncedSearchMap);
-                            const tagsMatch = this.matchesAnyTerm(tags, this.debouncedSearchTags);
-                            const regionMatch = this.matchesAnyTerm(region, this.debouncedSearchRegion);
-                            const emptyMatch = !this.hideEmpty || current > 0;
-
-                            return nameMatch && mapMatch && tagsMatch && regionMatch && emptyMatch;
-                        } catch (e) {
-                            console.error('Error filtering server:', e);
-                            return true;
-                        }
-                    });
-                },
-
-                sortServers() {
-                    this.scrollPosition = 0;
-                    this.filteredServers.sort((a, b) => {
-                        let aValue, bValue;
-
-                        if (this.sortBy === 'players') {
-                            aValue = a.players || 0;
-                            bValue = b.players || 0;
-                        } else if (this.sortBy === 'name') {
-                            aValue = a.name || '';
-                            bValue = b.name || '';
-                        } else if (this.sortBy === 'map') {
-                            aValue = a.map || '';
-                            bValue = b.map || '';
-                        }
-
-                        if (typeof aValue === 'string') {
-                            return this.sortDesc ? bValue.localeCompare(aValue) : aValue.localeCompare(bValue);
-                        } else {
-                            return this.sortDesc ? (bValue - aValue) : (aValue - bValue);
-                        }
-                    });
-                },
-
-                parseUrlParams() {
-                    const urlParams = new URLSearchParams(window.location.search);
-
-                    // Parse and set filter values from URL
-                    const name = urlParams.get('name');
-                    const map = urlParams.get('map');
-                    const regions = urlParams.get('regions');
-                    const tags = urlParams.get('tags');
-                    const hideEmpty = urlParams.get('hideEmpty');
-
-                    if (name) {
-                        this.searchName = name;
-                        this.debouncedSearchName = name;
-                    }
-
-                    if (map) {
-                        this.searchMap = map;
-                        this.debouncedSearchMap = map;
-                    }
-
-                    if (regions) {
-                        this.searchRegion = regions;
-                        this.debouncedSearchRegion = regions;
-                    }
-
-                    if (tags) {
-                        this.searchTags = tags;
-                        this.debouncedSearchTags = tags;
-                    }
-
-                    if (hideEmpty !== null) {
-                        this.hideEmpty = hideEmpty === 'true';
-                    }
-
-                    // Set flag if any parameters were loaded
-                    if (name || map || regions || tags || hideEmpty !== null) {
-                        this.urlParamsLoaded = true;
-                        setTimeout(() => this.urlParamsLoaded = false, 3000);
-                    }
-                },
-
-                updateUrlParams() {
-                    const params = new URLSearchParams();
-
-                    if (this.searchName) params.set('name', this.searchName);
-                    if (this.searchMap) params.set('map', this.searchMap);
-                    if (this.searchRegion) params.set('regions', this.searchRegion);
-                    if (this.searchTags) params.set('tags', this.searchTags);
-                    if (this.hideEmpty) params.set('hideEmpty', 'true');
-
-                    const newUrl = params.toString() ?
-                        `${window.location.pathname}?${params.toString()}` :
-                        window.location.pathname;
-
-                    window.history.replaceState({}, '', newUrl);
-                },
-
-                formatRegion(code) {
-                    const regions = {
-                        '-1': 'US', 0: 'US', 1: 'US', 2: 'SA', 3: 'EU',
-                        4: 'AS', 5: 'AU', 6: 'ME', 7: 'AF',
-                        255: 'WW'
+                    const handleResize = () => {
+                        updateViewportHeight();
                     };
 
-                    return regions[code] || '??';
-                },
+                    window.addEventListener("resize", handleResize);
+                    return () => window.removeEventListener("resize", handleResize);
+                }, [parseUrlParams, updateViewportHeight, fetchServers]);
 
-                formatPlayers(players, maxPlayers) {
-                    if (players === 0) {
-                        return `<span class='zero-players'>${players}</span><span class='max-players'>/${maxPlayers}</span>`;
-                    }
-                    return `${players}<span class='max-players'>/${maxPlayers}</span>`;
-                },
-
-                launchServer(addr) {
-                    window.location.href = `steam://connect/${addr}`;
-                }
-            }"
-            x-init="
-                // Parse URL parameters on initialization
-                parseUrlParams();
-
-                $watch('searchName', (value) => {
-                    debounce(() => {
-                        debouncedSearchName = value;
-                        filterServers();
-                        sortServers();
-                        updateUrlParams();
-                    }, 500);
-                });
-
-                $watch('searchMap', (value) => {
-                    debounce(() => {
-                        debouncedSearchMap = value;
-                        filterServers();
-                        sortServers();
-                        updateUrlParams();
-                    }, 500);
-                });
-
-                $watch('searchTags', (value) => {
-                    debounce(() => {
-                        debouncedSearchTags = value;
-                        filterServers();
-                        sortServers();
-                        updateUrlParams();
-                    }, 500);
-                });
-
-                $watch('searchRegion', (value) => {
-                    debounce(() => {
-                        debouncedSearchRegion = value;
-                        filterServers();
-                        sortServers();
-                        updateUrlParams();
-                    }, 500);
-                });
-
-                $watch('hideEmpty', () => {
+                useEffect(() => {
                     filterServers();
-                    sortServers();
+                }, [filterServers]);
+
+                useEffect(() => {
+                    debounce(() => {
+                        setDebouncedSearchName(searchName);
+                        updateUrlParams();
+                    }, 500);
+                }, [searchName, debounce, updateUrlParams]);
+
+                useEffect(() => {
+                    debounce(() => {
+                        setDebouncedSearchMap(searchMap);
+                        updateUrlParams();
+                    }, 500);
+                }, [searchMap, debounce, updateUrlParams]);
+
+                useEffect(() => {
+                    debounce(() => {
+                        setDebouncedSearchTags(searchTags);
+                        updateUrlParams();
+                    }, 500);
+                }, [searchTags, debounce, updateUrlParams]);
+
+                useEffect(() => {
+                    debounce(() => {
+                        setDebouncedSearchRegion(searchRegion);
+                        updateUrlParams();
+                    }, 500);
+                }, [searchRegion, debounce, updateUrlParams]);
+
+                useEffect(() => {
                     updateUrlParams();
-                });
+                }, [hideEmpty, updateUrlParams]);
 
-                $watch('sortBy', () => sortServers());
-                $watch('sortDesc', () => sortServers());
-            "
-        >
-            <div class="title-bar">
-                <div>
-                    FindServers.net — Browse CS2 Community Servers
-                    <span class="beta-tag"> Beta!</span>
-                </div>
-                <a href="https://github.com/smltr/findservers" target="_blank"
-                    >made by sam</a
-                >
-            </div>
-
-            <div class="tabs">
-                <button
-                    :class="{ active: activeTab === 'internet' }"
-                    @click="activeTab = 'internet'"
-                >
-                    Servers
-                </button>
-                <button
-                    :class="{ active: activeTab === 'info' }"
-                    @click="activeTab = 'info'"
-                >
-                    Info
-                </button>
-                <button
-                    :class="{ active: activeTab === 'report' }"
-                    @click="activeTab = 'report'"
-                >
-                    Report Bug / Request Feature
-                </button>
-            </div>
-
-            <div x-show="activeTab === 'internet'" class="internet-tab">
-                <div class="server-list">
-                    <div class="server-headers">
-                        <div class="header-pw">🔒</div>
-                        <div class="header-vac">🛡️</div>
-                        <div class="header-region">Region</div>
-                        <div class="header-name">
-                            <span>Servers (<span x-text="filteredServers.length"></span>)</span>
-                            <span x-show="refreshing" class="refreshing-text top">Refreshing<span class="dots"></span></span>
-                            <span x-show="urlParamsLoaded" class="refreshing-text top" style="color: var(--steam-yellow);">Filters loaded from URL</span>
-                        </div>
-                        <div class="header-bot">Bots</div>
-                        <div
-                            class="header-players"
-                            @click="sortBy = 'players'; sortDesc = !sortDesc"
-                            :class="{ 'sort-active': sortBy === 'players' }"
-                        >
-                            Players
+                return (
+                    <div className="server-browser">
+                        <div className="title-bar">
+                            <div>
+                                FindServers.net — Browse CS2 Community Servers
+                                <span className="beta-tag"> Beta!</span>
+                            </div>
+                            <a href="https://github.com/smltr/findservers" target="_blank">
+                                made by sam
+                            </a>
                         </div>
 
-                        <div class="header-map">Map</div>
+                        <div className="tabs">
+                            <button className={activeTab === "internet" ? "active" : ""} onClick={() => setActiveTab("internet")}>
+                                Servers
+                            </button>
+                            <button className={activeTab === "info" ? "active" : ""} onClick={() => setActiveTab("info")}>
+                                Info
+                            </button>
+                            <button className={activeTab === "report" ? "active" : ""} onClick={() => setActiveTab("report")}>
+                                Report Bug / Request Feature
+                            </button>
+                        </div>
 
-                        <div class="header-tags">Tags</div>
-                    </div>
+                        {activeTab === "internet" && (
+                            <div className="internet-tab">
+                                <div className="server-list">
+                                    <div className="server-headers">
+                                        <div className="header-pw">🔒</div>
+                                        <div className="header-vac">🛡️</div>
+                                        <div className="header-region">Region</div>
+                                        <div className="header-name">
+                                            <span>Servers ({filteredServers.length})</span>
+                                            {refreshing && (
+                                                <span className="refreshing-text top">
+                                                    Refreshing<span className="dots"></span>
+                                                </span>
+                                            )}
+                                            {urlParamsLoaded && (
+                                                <span className="refreshing-text top" style={{ color: "var(--steam-yellow)" }}>
+                                                    Filters loaded from URL
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="header-bot">Bots</div>
+                                        <div className={`header-players`}>Players</div>
+                                        <div className="header-map">Map</div>
+                                        <div className="header-tags">Tags</div>
+                                    </div>
 
-                    <div class="server-list-container">
-                        <div
-                            class="server-rows"
-                            @wheel.window="onScroll"
-                            x-show="!refreshing"
-                            x-ref="serverRows"
-                        >
-                            <template
-                                x-for="(server, index) in filteredServers.slice(scrollPosition, scrollPosition + viewportItemCount)"
-                                :key="index"
-                            >
-                            <div
-                                :id="server.address"
-                                class="server-row"
-                                :class="{ 'selected': selectedServer === server.address }"
-                                @click="selectedServer = server.address"
-                                @dblclick="launchServer(server.address)"
-                            >
-                                <div class="cell-pw"></div>
-                                <div
-                                    class="cell-vac"
-                                    x-text="server.secure ? '●' : ''"
-                                ></div>
-                                <div
-                                    class="cell-region"
-                                    x-text="formatRegion(server.region)"
-                                ></div>
-                                <div class="cell-name">
-                                    <span
-                                        class="server-name"
-                                        x-text="server.name"
-                                    ></span>
-                                    <span
-                                        class="server-ip"
-                                        x-text="server.address"
-                                    ></span>
+                                    <div className="server-list-container">
+                                        <div className="server-rows" onWheel={onScroll} style={{ display: refreshing ? "none" : "block" }} ref={serverRowsRef}>
+                                            {filteredServers.slice(scrollPosition, scrollPosition + viewportItemCount).map((server, index) => (
+                                                <div key={server.address} id={server.address} className={`server-row ${selectedServer === server.address ? "selected" : ""}`} onClick={() => setSelectedServer(server.address)} onDoubleClick={() => launchServer(server.address)}>
+                                                    <div className="cell-pw"></div>
+                                                    <div className="cell-vac">{server.secure ? "●" : ""}</div>
+                                                    <div className="cell-region">{formatRegion(server.region)}</div>
+                                                    <div className="cell-name">
+                                                        <span className="server-name">{server.name}</span>
+                                                        <span className="server-ip">{server.address}</span>
+                                                    </div>
+                                                    <div className="cell-bot">{server.bots ? server.bots : ""}</div>
+                                                    <div className="cell-players">{formatPlayers(server.players, server.max_players)}</div>
+                                                    <div className="cell-map">{server.map}</div>
+                                                    <div className="cell-tags">{Array.isArray(server.tags) ? server.tags.join(", ") : server.tags}</div>
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        {filteredServers.length > 50 && (
+                                            <div className="virtual-scrollbar" onMouseDown={onScrollbarClick}>
+                                                <div className="scrollbar-track">
+                                                    <div
+                                                        className={`scrollbar-thumb ${isDragging ? "dragging" : ""}`}
+                                                        style={{
+                                                            height: `${scrollbarThumbHeight}%`,
+                                                            top: `${scrollbarThumbPosition}%`,
+                                                        }}
+                                                        onMouseDown={onThumbMouseDown}
+                                                    ></div>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
-                                <div
-                                    class="cell-bot"
-                                    x-text="server.bots ? server.bots : ''"
-                                ></div>
-                                <div
-                                    class="cell-players"
-                                    x-html="formatPlayers(server.players, server.max_players)"
-                                ></div>
-                                <div class="cell-map" x-text="server.map"></div>
-                                <div
-                                    class="cell-tags"
-                                    x-text="Array.isArray(server.tags) ? server.tags.join(', ') : server.tags"
+                                <div className="bottom-controls">
+                                    <div className="filters">
+                                        <div className="filter-input">
+                                            <input type="text" value={searchName} onChange={(e) => setSearchName(e.target.value)} placeholder="Name (surf, dm, ...)" />
+                                        </div>
+                                        <div className="filter-input">
+                                            <input type="text" value={searchMap} onChange={(e) => setSearchMap(e.target.value)} placeholder="Map (de_dust2, surf, ...)" />
+                                        </div>
+                                        <div className="filter-input">
+                                            <input type="text" value={searchRegion} onChange={(e) => setSearchRegion(e.target.value)} placeholder="Regions (US, EU, AS...)" />
+                                        </div>
+                                        <div className="filter-input">
+                                            <input type="text" value={searchTags} onChange={(e) => setSearchTags(e.target.value)} placeholder="Tags (dm, 5v5, ...)" />
+                                        </div>
+                                        <div className="filter-checkbox">
+                                            <label>
+                                                <input type="checkbox" checked={hideEmpty} onChange={(e) => setHideEmpty(e.target.checked)} />
+                                                Hide Empty Servers
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    <div className="actions">
+                                        {refreshing && (
+                                            <span className="refreshing-text bottom">
+                                                Refreshing<span className="dots"></span>
+                                            </span>
+                                        )}
+                                        <button className="refresh-btn" onClick={fetchServers}>
+                                            Refresh Servers
+                                        </button>
+                                        <button className="connect-btn" onClick={() => selectedServer && launchServer(selectedServer)}>
+                                            Connect
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
-                        </template>
-                        </div>
+                        )}
 
-                        <div
-                            class="virtual-scrollbar"
-                            x-show="filteredServers.length > 50"
-                            @mousedown="onScrollbarClick"
-                        >
-                            <div
-                                class="scrollbar-track"
-                            >
-                                <div
-                                    class="scrollbar-thumb"
-                                    :style="`height: ${scrollbarThumbHeight}%; top: ${scrollbarThumbPosition}%`"
-                                    :class="{ 'dragging': isDragging }"
-                                    @mousedown="onThumbMouseDown"
-                                ></div>
+                        {activeTab === "info" && (
+                            <div className="info-section">
+                                <div className="info-content">
+                                    <h2>How to use</h2>
+                                    <h3>Server list</h3>
+                                    <ul>
+                                        <li>
+                                            You can connect to a server by double clicking it, or selecting it and hitting <code>Connect</code> at the bottom right.
+                                        </li>
+                                        <li>The IP address is shown when hovering over a server, and can be copied and used to connect by entering 'connect [IP]' in console.</li>
+                                    </ul>
+
+                                    <h3>Filters</h3>
+                                    <ul>
+                                        <li>
+                                            Multiple filters can be entered by separating with a comma. E.g. tags: <code>1v1, arena</code>
+                                        </li>
+                                        <li>There are both positive and negative filters.</li>
+                                        <li>
+                                            Typing <code>de_, aim_</code> into the map filter will show only servers with a map containing <code>de_</code> or <code>aim_</code>
+                                        </li>
+                                        <li>
+                                            Typing <code>de_, -dust2</code> will only show maps containing <code>de_</code> but not maps containing <code>dust2</code>
+                                        </li>
+                                    </ul>
+
+                                    <h3>URL Parameters (Bookmarkable Filters)</h3>
+                                    <ul>
+                                        <li>You can bookmark your favorite filter combinations using URL parameters</li>
+                                        <li>
+                                            Available parameters: <code>name</code>, <code>map</code>, <code>regions</code>, <code>tags</code>, <code>hideEmpty</code>
+                                        </li>
+                                        <li>
+                                            Example: <code>findservers.net?regions=US,EU&map=de_dust2&hideEmpty=true</code>
+                                        </li>
+                                        <li>
+                                            Example: <code>findservers.net?name=surf&regions=US&tags=beginner</code>
+                                        </li>
+                                        <li>
+                                            Example: <code>findservers.net?map=aim_&tags=ffa,dm</code>
+                                        </li>
+                                        <li>The URL automatically updates as you change filters, making it easy to share or bookmark</li>
+                                    </ul>
+                                </div>
                             </div>
-                        </div>
+                        )}
+
+                        {activeTab === "report" && (
+                            <div className="report-section">
+                                <div className="report-info">
+                                    <h2>Report Bugs or Request Features</h2>
+                                    <p>
+                                        If you've found a bug or have a feature request, please
+                                        <a href="https://github.com/smltr/findservers/issues/new" target="_blank" className="info-link">
+                                            create a new issue on GitHub
+                                        </a>
+                                        .
+                                    </p>
+
+                                    <h2>Changelog</h2>
+                                    <div className="changelog">
+                                        <div className="changelog-entry">
+                                            <div className="changelog-date">2025-05-30</div>
+                                            <ul>
+                                                <li>Added negative filtering with - syntax: -de_ filters out all maps starting with de_</li>
+                                                <li>Virtual scrolling implemented for performance</li>
+                                                <li>Temporarily limiting regions to US, SA, and EU</li>
+                                            </ul>
+                                        </div>
+                                        <div className="changelog-entry">
+                                            <div className="changelog-date">2025-02-23</div>
+                                            <ul>
+                                                <li>Server list now accurate and more comprehensive</li>
+                                                <li>Default to sorting by player count</li>
+                                                <li>Improved filtering</li>
+                                                <li>Server select working again</li>
+                                                <li>Improved front end performance in progress, need to revamp how servers are rendered</li>
+                                            </ul>
+                                        </div>
+                                        <div className="changelog-entry">
+                                            <div className="changelog-date">2025-02-22</div>
+                                            <ul>
+                                                <li>Added changelog section, links to github issues and discord invite</li>
+                                                <li>A lot of visual changes to improve readability for the server list</li>
+                                                <li>Added country code for servers, needs debugging</li>
+                                                <li>Added IP next to server name when hovering</li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </div>
-                </div>
-                <div class="bottom-controls">
-                    <div class="filters">
-                        <div class="filter-input">
-                            <input
-                                type="text"
-                                x-model="searchName"
-                                @input="debounce(() => debouncedSearchName = searchName, 300)"
-                                placeholder="Name (surf, dm, ...)"
-                            />
-                        </div>
-                        <div class="filter-input">
-                            <input
-                                type="text"
-                                x-model="searchMap"
-                                @input="debounce(() => debouncedSearchMap = searchMap, 300)"
-                                placeholder="Map (de_dust2, surf, ...)"
-                            />
-                        </div>
-                        <div class="filter-input">
-                            <input
-                                type="text"
-                                x-model="searchRegion"
-                                @input="debounce(() => debouncedSearchRegion = searchRegion, 300)"
-                                placeholder="Regions (US, EU, AS...)"
-                            />
-                        </div>
-                        <div class="filter-input">
-                            <input
-                                type="text"
-                                x-model="searchTags"
-                                @input="debounce(() => debouncedSearchTags = searchTags, 300)"
-                                placeholder="Tags (dm, 5v5, ...)"
-                            />
-                        </div>
-                        <div class="filter-checkbox">
-                            <label>
-                                <input
-                                    type="checkbox"
-                                    x-model="hideEmpty"
-                                    @change="filterServers()"
-                                />
-                                Hide Empty Servers
-                            </label>
-                        </div>
-                    </div>
+                );
+            }
 
-                    <div class="actions">
-                        <span x-show="refreshing" class="refreshing-text bottom">Refreshing<span class="dots"></span></span>
-                        <button class="refresh-btn" @click="fetchServers()">
-                            Refresh Servers
-                        </button>
-                        <button
-                            class="connect-btn"
-                            @click="selectedServer && (window.location.href = `steam://connect/${selectedServer}`)"
-                        >
-                            Connect
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <div x-show="activeTab === 'info'" class="info-section">
-                <div class="info-content">
-                    <h2>How to use</h2>
-                    <h3>Server list</h3>
-                    <ul>
-                        <li>You can connect to a server by double clicking it, or selecting it and hitting <code>Connect<code> at the bottom right.</li>
-                        <li>The IP address is shown when hovering over a server, and can be copied and used to connect by entering 'connect [IP]' in console.</li>
-                    </ul>
-
-                    <h3>Filters</h3>
-                    <ul>
-                        <li>Multiple filters can be entered by separating with a comma. E.g. tags: <code>1v1, arena</code></li>
-                        <li>There are both positive and negative filters.</li>
-                        <li>Typing <code>de_, aim_</code> into the map filter will show only servers with a map containing <code>de_</code> or <code>aim_</code></li>
-                        <li>Typing <code>de_, -dust2</code> will only show maps containing <code>de_</code> but not maps containing <code>dust2</code></li>
-                    </ul>
-
-                    <h3>URL Parameters (Bookmarkable Filters)</h3>
-                    <ul>
-                        <li>You can bookmark your favorite filter combinations using URL parameters</li>
-                        <li>Available parameters: <code>name</code>, <code>map</code>, <code>regions</code>, <code>tags</code>, <code>hideEmpty</code></li>
-                        <li>Example: <code>findservers.net?regions=US,EU&map=de_dust2&hideEmpty=true</code></li>
-                        <li>Example: <code>findservers.net?name=surf&regions=US&tags=beginner</code></li>
-                        <li>Example: <code>findservers.net?map=aim_&tags=ffa,dm</code></li>
-                        <li>The URL automatically updates as you change filters, making it easy to share or bookmark</li>
-                    </ul>
-                </div>
-            </div>
-
-            <div x-show="activeTab === 'report'" class="report-section">
-                <div class="report-info">
-                    <h2>Report Bugs or Request Features</h2>
-                    <p>
-                        If you've found a bug or have a feature request, please
-                        <a
-                            href="https://github.com/smltr/findservers/issues/new"
-                            target="_blank"
-                            class="info-link"
-                        >
-                            create a new issue on GitHub </a
-                        >.
-                    </p>
-
-                    <h2>Changelog</h2>
-                    <div class="changelog">
-                        <div class="changelog-entry">
-                            <div class="changelog-date">2025-05-30</div>
-                            <ul>
-                                <li>Added negative filtering with - syntax: -de_ filters out all maps starting with de_</li>
-                                <li>
-                                    Virtual scrolling implemented for performance
-                                </li>
-                                <li>Temporarily limiting regions to US, SA, and EU</li>
-                            </ul>
-                        </div>
-                        <div class="changelog-entry">
-                            <div class="changelog-date">2025-02-23</div>
-                            <ul>
-                                <li>
-                                    Server list now accurate and more
-                                    comprehensive
-                                </li>
-                                <li>Default to sorting by player count</li>
-                                <li>Improved filtering</li>
-                                <li>Server select working again</li>
-                                <li>
-                                    Improved front end performance in progress,
-                                    need to revamp how servers are rendered
-                                </li>
-                            </ul>
-                        </div>
-                        <div class="changelog-entry">
-                            <div class="changelog-date">2025-02-22</div>
-                            <ul>
-                                <li>
-                                    Added changelog section, links to github
-                                    issues and discord invite
-                                </li>
-                                <li>
-                                    A lot of visual changes to improve
-                                    readability for the server list
-                                </li>
-                                <li>
-                                    Added country code for servers, needs
-                                    debugging
-                                </li>
-                                <li>
-                                    Added IP next to server name when hovering
-                                </li>
-                            </ul>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+            // Render the app
+            const root = ReactDOM.createRoot(document.getElementById("root"));
+            root.render(<ServerBrowser />);
+        </script>
     </body>
 </html>

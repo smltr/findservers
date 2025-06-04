@@ -115,7 +115,6 @@ body {
     background: var(--steam-header);
     color: white;
     font-size: 13px;
-    cursor: pointer;
     position: sticky;
     top: 0;
     z-index: 10;
@@ -455,7 +454,7 @@ label {
     color: var(--steam-yellow);
     padding: 2px 6px;
     border-radius: 3px;
-    font-family: 'Courier New', monospace;
+    font-family: "Courier New", monospace;
     font-size: 0.9em;
     border: 1px solid #000;
 }

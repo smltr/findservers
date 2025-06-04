@@ -54,6 +54,8 @@ func fetchServers() ([]models.Server, error) {
 		"\\region\\255", // Worldwide
 	}
 
+	foundIPs := make(map[string]bool)
+
 	for _, region := range regions {
 		for i := range maxRetries {
 			// Basic filter for dedicated servers and specific region
@@ -89,10 +91,11 @@ func fetchServers() ([]models.Server, error) {
 			// some basic preliminary filtering
 			for _, server := range result.Response.Servers {
 				// Skip Valve official servers
-				if strings.HasPrefix(server.Name, "Valve Counter-Strike") {
+				if strings.HasPrefix(server.Name, "Valve Counter-Strike") || foundIPs[server.Addr] {
 					continue
 				}
 
+				foundIPs[server.Addr] = true
 				allServers = append(allServers, models.CleanServer(server))
 			}
 
