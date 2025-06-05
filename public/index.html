@@ -43,7 +43,12 @@
                 const [viewportHeight, setViewportHeight] = useState(0);
 
                 const serverRowsRef = useRef(null);
-                const debounceTimeoutRef = useRef(null);
+                const debounceTimeoutRefs = useRef({
+                    name: null,
+                    map: null,
+                    tags: null,
+                    region: null,
+                });
 
                 const viewportItemCount = viewportHeight > 0 ? Math.max(20, Math.floor(viewportHeight / 27)) : 50;
                 const maxScrollPosition = Math.max(0, filteredServers.length - viewportItemCount);
@@ -57,9 +62,9 @@
                     }
                 }, [maxScrollPosition]);
 
-                const debounce = useCallback((fn, wait) => {
-                    clearTimeout(debounceTimeoutRef.current);
-                    debounceTimeoutRef.current = setTimeout(fn, wait);
+                const debounce = useCallback((key, fn, wait) => {
+                    clearTimeout(debounceTimeoutRefs.current[key]);
+                    debounceTimeoutRefs.current[key] = setTimeout(fn, wait);
                 }, []);
 
                 const matchesAnyTerm = useCallback((value, searchTerms) => {
@@ -88,6 +93,7 @@
                 }, []);
 
                 const filterServers = useCallback(() => {
+                    console.log("Filtering servers...");
                     setScrollPosition(0);
                     const filtered = servers
                         .filter((server) => {
@@ -303,31 +309,47 @@
                 }, [filterServers]);
 
                 useEffect(() => {
-                    debounce(() => {
-                        setDebouncedSearchName(searchName);
-                        updateUrlParams();
-                    }, 500);
+                    debounce(
+                        "name",
+                        () => {
+                            setDebouncedSearchName(searchName);
+                            updateUrlParams();
+                        },
+                        500,
+                    );
                 }, [searchName, debounce, updateUrlParams]);
 
                 useEffect(() => {
-                    debounce(() => {
-                        setDebouncedSearchMap(searchMap);
-                        updateUrlParams();
-                    }, 500);
+                    debounce(
+                        "map",
+                        () => {
+                            setDebouncedSearchMap(searchMap);
+                            updateUrlParams();
+                        },
+                        500,
+                    );
                 }, [searchMap, debounce, updateUrlParams]);
 
                 useEffect(() => {
-                    debounce(() => {
-                        setDebouncedSearchTags(searchTags);
-                        updateUrlParams();
-                    }, 500);
+                    debounce(
+                        "tags",
+                        () => {
+                            setDebouncedSearchTags(searchTags);
+                            updateUrlParams();
+                        },
+                        500,
+                    );
                 }, [searchTags, debounce, updateUrlParams]);
 
                 useEffect(() => {
-                    debounce(() => {
-                        setDebouncedSearchRegion(searchRegion);
-                        updateUrlParams();
-                    }, 500);
+                    debounce(
+                        "region",
+                        () => {
+                            setDebouncedSearchRegion(searchRegion);
+                            updateUrlParams();
+                        },
+                        500,
+                    );
                 }, [searchRegion, debounce, updateUrlParams]);
 
                 useEffect(() => {
