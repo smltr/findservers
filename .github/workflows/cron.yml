@@ -1,0 +1,27 @@
+name: Refresh Server List
+
+on:
+  schedule:
+    # Run every 15 minutes
+    - cron: "*/15 * * * *"
+  # Allow manual triggering for testing
+  workflow_dispatch:
+
+jobs:
+  call-api:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Call API Endpoint
+        run: |
+          curl -X POST \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ secrets.CRON_API_TOKEN }}" \
+            -d '{"source": "github-actions"}' \
+            https://findservers.fly.dev/api/refresh-servers
+
+      - name: Check response
+        if: failure()
+        run: |
+          echo "API call failed"
+          exit 1

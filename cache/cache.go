@@ -41,26 +41,27 @@ func InitRedis() error {
 	return nil
 }
 
-func RefreshServerCache() {
+func RefreshServerCache() error {
 	servers, err := fetchServers()
 	if err != nil {
 		log.Printf("Failed to fetch servers: %v", err)
-		return
+		return err
 	}
 
 	jsonData, err := json.Marshal(servers)
 	if err != nil {
 		log.Printf("Failed to marshal servers: %v", err)
-		return
+		return err
 	}
 
 	err = rdb.Set(ctx, serversKey, jsonData, cacheDuration).Err()
 	if err != nil {
 		log.Printf("Failed to cache servers in Redis: %v", err)
-		return
+		return err
 	}
 
 	log.Printf("Successfully cached %d servers in Redis (expires in %v)", len(servers), cacheDuration)
+	return nil
 }
 
 func GetServersFromCache() []models.Server {
