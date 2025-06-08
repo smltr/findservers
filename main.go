@@ -12,10 +12,11 @@ import (
 
 func main() {
 	godotenv.Load()
+	cache.InitRedis()
 	cache.RefreshServerCache()
 	go func() {
 		for {
-			time.Sleep(5 * time.Minute)
+			time.Sleep(10 * time.Minute)
 			cache.RefreshServerCache()
 		}
 	}()

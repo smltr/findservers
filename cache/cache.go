@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"context"
 	"encoding/json"
 	"findservers/models"
 	"fmt"
@@ -9,13 +10,36 @@ import (
 	"net/http"
 	"os"
 	"strings"
-	"sync"
+	"time"
+
+	"github.com/redis/go-redis/v9"
 )
 
 var (
-	serverCache = []models.Server{}
-	lock        = sync.RWMutex{}
+	rdb           *redis.Client
+	ctx           = context.Background()
+	serversKey    = "servers:list"
+	cacheDuration = 15 * time.Minute
 )
+
+func InitRedis() error {
+	redisURL := os.Getenv("REDIS_URL")
+
+	opt, err := redis.ParseURL(redisURL)
+	if err != nil {
+		return fmt.Errorf("failed to parse Redis URL: %w", err)
+	}
+
+	rdb = redis.NewClient(opt)
+
+	_, err = rdb.Ping(ctx).Result()
+	if err != nil {
+		return fmt.Errorf("failed to connect to Redis: %w", err)
+	}
+
+	log.Println("Connected to Redis successfully")
+	return nil
+}
 
 func RefreshServerCache() {
 	servers, err := fetchServers()
@@ -24,22 +48,76 @@ func RefreshServerCache() {
 		return
 	}
 
-	lock.Lock()
-	defer lock.Unlock()
+	jsonData, err := json.Marshal(servers)
+	if err != nil {
+		log.Printf("Failed to marshal servers: %v", err)
+		return
+	}
 
-	serverCache = servers
+	err = rdb.Set(ctx, serversKey, jsonData, cacheDuration).Err()
+	if err != nil {
+		log.Printf("Failed to cache servers in Redis: %v", err)
+		return
+	}
+
+	log.Printf("Successfully cached %d servers in Redis (expires in %v)", len(servers), cacheDuration)
 }
 
 func GetServersFromCache() []models.Server {
-	lock.RLock()
-	defer lock.RUnlock()
+	jsonData, err := rdb.Get(ctx, serversKey).Result()
+	if err != nil {
+		if err == redis.Nil {
+			log.Println("No servers in cache, fetching fresh data...")
+			RefreshServerCache()
 
-	return serverCache
+			jsonData, err = rdb.Get(ctx, serversKey).Result()
+			if err != nil {
+				log.Printf("Failed to get servers from cache after refresh: %v", err)
+				return []models.Server{}
+			}
+		} else {
+			log.Printf("Redis error: %v", err)
+			return []models.Server{}
+		}
+	}
+
+	var servers []models.Server
+	err = json.Unmarshal([]byte(jsonData), &servers)
+	if err != nil {
+		log.Printf("Failed to unmarshal servers from cache: %v", err)
+		return []models.Server{}
+	}
+
+	return servers
+}
+
+func GetCacheInfo() (bool, time.Duration, int, error) {
+	ttl, err := rdb.TTL(ctx, serversKey).Result()
+	if err != nil {
+		return false, 0, 0, err
+	}
+
+	exists := ttl > 0
+	var count int
+
+	if exists {
+		servers := GetServersFromCache()
+		count = len(servers)
+	}
+
+	return exists, ttl, count, nil
+}
+
+func CloseRedis() error {
+	if rdb != nil {
+		return rdb.Close()
+	}
+	return nil
 }
 
 func fetchServers() ([]models.Server, error) {
 	apiKey := os.Getenv("STEAM_API_KEY")
-	var allServers []models.Server
+
 	maxRetries := 3
 	// Try different regions to split up the results and avoid the 10k limit
 	regions := []string{
@@ -54,8 +132,7 @@ func fetchServers() ([]models.Server, error) {
 		"\\region\\255", // Worldwide
 	}
 
-	foundIPs := make(map[string]bool)
-
+	var rawServers []models.ServerRaw
 	for _, region := range regions {
 		for i := range maxRetries {
 			// Basic filter for dedicated servers and specific region
@@ -88,16 +165,7 @@ func fetchServers() ([]models.Server, error) {
 				continue
 			}
 
-			// some basic preliminary filtering
-			for _, server := range result.Response.Servers {
-				// Skip Valve official servers
-				if strings.HasPrefix(server.Name, "Valve Counter-Strike") || foundIPs[server.Addr] {
-					continue
-				}
-
-				foundIPs[server.Addr] = true
-				allServers = append(allServers, models.CleanServer(server))
-			}
+			rawServers = append(rawServers, result.Response.Servers...)
 
 			if len(result.Response.Servers) > 0 {
 				break
@@ -106,11 +174,35 @@ func fetchServers() ([]models.Server, error) {
 		}
 	}
 
-	log.Printf("Total servers found across all regions: %d", len(allServers))
+	servers := FilterAndCleanServers(rawServers)
+	log.Printf("Raw servers found across all regions: %d", len(rawServers))
+	log.Printf("Total servers found across all regions after filtering: %d", len(servers))
+	return servers, nil
 
-	if len(allServers) > 10 {
-		return allServers, nil
+}
+
+func FilterAndCleanServers(rawServers []models.ServerRaw) []models.Server {
+	foundIPs := make(map[string]bool)
+	servers := make([]models.Server, 0)
+
+	for _, server := range rawServers {
+		// Skip Valve official servers
+		switch {
+		case strings.HasPrefix(server.Name, "Valve Counter-Strike"):
+			continue
+		case server.MaxPlayers > 64: // based on experience, anything with 255 max players is spam
+			continue
+		case strings.Contains(server.GameType, "stalnoy"):
+			continue
+		case foundIPs[server.Addr]:
+			continue
+		case server.Map == "":
+			continue
+		}
+
+		foundIPs[server.Addr] = true
+		servers = append(servers, models.CleanServer(server))
 	}
 
-	return nil, fmt.Errorf("failed to fetch sufficient servers across all regions")
+	return servers
 }
