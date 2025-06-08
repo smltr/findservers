@@ -5,7 +5,6 @@ import (
 	"findservers/cache"
 	"log"
 	"net/http"
-	"time"
 
 	"github.com/joho/godotenv"
 )
@@ -13,13 +12,6 @@ import (
 func main() {
 	godotenv.Load()
 	cache.InitRedis()
-	cache.RefreshServerCache()
-	go func() {
-		for {
-			time.Sleep(10 * time.Minute)
-			cache.RefreshServerCache()
-		}
-	}()
 	fs := http.FileServer(http.Dir("public"))
 	http.Handle("/", fs)
 	http.HandleFunc("/api/servers", api.GetServers)
