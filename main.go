@@ -12,6 +12,7 @@ import (
 func main() {
 	godotenv.Load()
 	cache.InitRedis()
+
 	fs := http.FileServer(http.Dir("public"))
 	http.Handle("/", fs)
 	http.HandleFunc("/api/servers", api.GetServers)

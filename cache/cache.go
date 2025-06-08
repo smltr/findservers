@@ -19,7 +19,7 @@ var (
 	rdb           *redis.Client
 	ctx           = context.Background()
 	serversKey    = "servers:list"
-	cacheDuration = 15 * time.Minute
+	cacheDuration = 30 * time.Minute
 )
 
 func InitRedis() error {
@@ -194,6 +194,10 @@ func FilterAndCleanServers(rawServers []models.ServerRaw) []models.Server {
 		case server.MaxPlayers > 64: // based on experience, anything with 255 max players is spam
 			continue
 		case strings.Contains(server.GameType, "stalnoy"):
+			continue
+		case strings.Contains(server.Name, "Develop Server"):
+			continue
+		case strings.Contains(server.Name, "| ★ Aurora CS2 ★ |"):
 			continue
 		case foundIPs[server.Addr]:
 			continue
